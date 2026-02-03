@@ -120,7 +120,14 @@ export function MCPManager({ visible, onClose }: MCPManagerProps) {
                 onPress={() => handleAddPreset('context7')}
               >
                 <Ionicons name="book" size={24} color={theme.accent} />
-                <Text style={styles.presetText}>Context7</Text>
+                <Text style={styles.presetText}>Docs</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.presetButton}
+                onPress={() => handleAddPreset('exa-search')}
+              >
+                <Ionicons name="rocket" size={24} color={theme.accent} />
+                <Text style={styles.presetText}>Exa</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.presetButton}

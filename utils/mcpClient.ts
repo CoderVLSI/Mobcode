@@ -210,6 +210,7 @@ class MCPClient {
     const presets: Record<string, string> = {
       // Public HTTP MCP Servers (work directly)
       'context7': 'https://mcp.context7.com/mcp',
+      'exa-search': 'https://mcp.exa.ai/mcp',
 
       // Popular MCP Servers (require local HTTP proxy or npx)
       'filesystem': 'http://localhost:3000/mcp',
