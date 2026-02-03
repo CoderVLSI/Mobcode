@@ -172,7 +172,7 @@ class AIService {
       xhr.send(JSON.stringify({
         model: model === 'gpt-4o-mini' ? 'gpt-4o-mini' : 'gpt-4o',
         messages: messages,
-        max_tokens: 8000,
+        max_tokens: 16000,
         stream: true,
       }));
     });
@@ -243,7 +243,7 @@ class AIService {
 
       xhr.send(JSON.stringify({
         model: model === 'claude-3-haiku' ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022',
-        max_tokens: 8000,
+        max_tokens: 16000,
         messages: messages.filter((m) => m.role !== 'system'),
         system: messages.find((m) => m.role === 'system')?.content || '',
         stream: true,
@@ -583,7 +583,7 @@ class AIService {
         messages: messages,
         stream: true,
         temperature: 0.7,
-        max_tokens: 8000, // Increased to prevent cutoff
+        max_tokens: 16000, // Increased to prevent cutoff
       };
 
       console.log('GLM Request body:', JSON.stringify(requestBody, null, 2));
@@ -642,7 +642,7 @@ class AIService {
         body: JSON.stringify({
           model: model === 'gpt-4o-mini' ? 'gpt-4o-mini' : 'gpt-4o',
           messages: messages,
-          max_tokens: 8000,
+          max_tokens: 16000,
         }),
       });
 
@@ -691,7 +691,7 @@ class AIService {
         body: JSON.stringify({
           model: glmModel,
           messages: messages,
-          max_tokens: 8000, // Increased to prevent cutoff
+          max_tokens: 16000, // Increased to prevent cutoff
           temperature: 0.7,
         }),
       });
@@ -734,7 +734,7 @@ class AIService {
         },
         body: JSON.stringify({
           model: model === 'claude-3-haiku' ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022',
-          max_tokens: 8000,
+          max_tokens: 16000,
           messages: messages.filter((m) => m.role !== 'system'),
           system: messages.find((m) => m.role === 'system')?.content || '',
         }),
@@ -799,7 +799,7 @@ class AIService {
         body: JSON.stringify({
           model: model.name,
           messages: messages,
-          max_tokens: 8000,
+          max_tokens: 16000,
         }),
       });
 

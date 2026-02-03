@@ -31,7 +31,11 @@ const getBaseDir = () => {
 
   for (const dir of possibleDirs) {
     if (dir) {
-      console.log('Using base directory:', dir);
+      // Only log once to avoid spam
+      if (!getBaseDir['logged']) {
+        console.log('Using base directory:', dir);
+        getBaseDir['logged'] = true;
+      }
       return dir;
     }
   }

@@ -359,7 +359,28 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
       const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         console.log('JSON pattern found, attempting to parse...');
-        const parsed = JSON.parse(jsonMatch[0]);
+        const jsonStr = jsonMatch[0];
+
+        // Check if JSON is truncated (doesn't end with proper closing)
+        const lastBrace = jsonStr.trim().lastIndexOf('}');
+        const isOpenEnded = !jsonStr.trim().endsWith(']') || !jsonStr.trim().endsWith('}');
+
+        if (isOpenEnded) {
+          console.warn('JSON appears to be truncated/cutoff');
+          console.warn('This usually means the response hit the token limit');
+          // Return friendly error message instead of trying to parse
+          conversationalResponse = "I apologize, but my response was cut off due to length limits. Could you please break this task into smaller parts? For example, instead of asking to create everything at once, ask me to create one file at a time.";
+          return {
+            id: Date.now().toString(),
+            goal: userRequest,
+            steps: [],
+            estimatedSteps: 0,
+            requiresApproval: [],
+            conversationalResponse,
+          };
+        }
+
+        const parsed = JSON.parse(jsonStr);
         if (parsed && Array.isArray(parsed.steps)) {
           planData = parsed;
           console.log('Plan parsed successfully');
@@ -403,7 +424,14 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
       // If parsing fails, try to extract conversational part (before any JSON-like content)
       const jsonStartIndex = fullContent.indexOf('{');
       const conversationalPart = jsonStartIndex > 0 ? fullContent.substring(0, jsonStartIndex).trim() : fullContent;
-      conversationalResponse = conversationalPart || 'I understand. Let me help you with that.';
+
+      // Check if response appears truncated
+      if (conversationalPart.length > 20000 || fullContent.includes('...')) {
+        conversationalResponse = "I apologize, but my response was cut off due to length limits. Could you please break this task into smaller parts? Try asking me to work on one file or feature at a time.";
+      } else {
+        conversationalResponse = conversationalPart || 'I understand. Let me help you with that.';
+      }
+
       return {
         id: Date.now().toString(),
         goal: userRequest,
