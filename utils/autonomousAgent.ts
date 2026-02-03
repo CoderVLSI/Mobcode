@@ -175,7 +175,14 @@ class AutonomousAgent {
           });
         }
 
-        summaryPrompt += `\n\nPlease provide a friendly summary to the user. Focus on what was accomplished. Keep it concise and conversational. Do NOT show any JSON or technical details - just explain what you did in plain language.`;
+        summaryPrompt += `\n\nPlease provide a friendly summary to the user. Focus on what was accomplished. Keep it concise and conversational.
+
+CRITICAL RULES:
+- NEVER show JSON, tool names, or technical details
+- NEVER mention "tool", "API", "function", or technical terms
+- Use plain, simple language like you're talking to a friend
+- Just say what you did, not HOW you did it
+- Example: "Created the chat app files" instead of "Used write_file tool to create ChatApp.tsx"`;
 
         console.log('Summary prompt:', summaryPrompt);
 
@@ -298,9 +305,9 @@ ${toolsDesc}
 
 ## Response Format:
 
-For **chat** - Just respond naturally in text
+For **chat** - Just respond naturally in text (NO JSON)
 
-For **tasks** - Respond ONLY with valid JSON:
+For **tasks** - Respond ONLY with valid JSON (NO other text before or after):
 {
   "goal": "brief goal",
   "steps": [
@@ -314,6 +321,8 @@ For **tasks** - Respond ONLY with valid JSON:
   ]
 }
 
+IMPORTANT: When creating a plan, respond with PURE JSON only. Do NOT add any conversational text before or after the JSON.
+
 Be friendly and helpful! If someone just wants to chat, have a normal conversation. Only use tools when they ask you to DO something with files/code. Always create projects in dedicated folders!`,
       },
       ...sanitizedHistory,
@@ -324,24 +333,9 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
     ], model, customModels, apiKey, (token) => {
       fullContent += token;
 
-      // Determine if it's JSON or Chat
-      if (!checkedJson && fullContent.trim().length > 0) {
-        if (fullContent.trim().startsWith('{')) {
-          isJson = true;
-        }
-        checkedJson = true;
-      }
-
-      // If it's NOT JSON, stream the tokens to the user
-      // But only after we've confirmed it's not JSON
-      if (checkedJson && !isJson && onStream) {
-        if (!hasStreamed) {
-          onStream(fullContent);
-          hasStreamed = true;
-        } else {
-          onStream(token);
-        }
-      }
+      // NEVER stream during plan creation - we need to see the full response first
+      // to determine if it's JSON or conversational
+      // Streaming happens AFTER we parse the response
     }, hfApiKey, geminiApiKey);
 
     console.log('AI Response received');
@@ -375,7 +369,10 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
           });
         } else {
           console.log('JSON parsed but not a valid plan structure');
-          conversationalResponse = fullContent;
+          // Extract only the conversational part (before JSON)
+          const jsonIndex = fullContent.indexOf(jsonMatch[0]);
+          const conversationalPart = jsonIndex > 0 ? fullContent.substring(0, jsonIndex).trim() : 'I understand your request. Let me help you with that.';
+          conversationalResponse = conversationalPart;
           console.log('Conversational response detected');
           return {
             id: Date.now().toString(),
@@ -403,8 +400,10 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
     } catch (e) {
       console.error('Failed to parse AI response:', e);
       console.error('Response content:', fullContent.substring(0, 500));
-      // If parsing fails, treat as conversational response
-      conversationalResponse = fullContent;
+      // If parsing fails, try to extract conversational part (before any JSON-like content)
+      const jsonStartIndex = fullContent.indexOf('{');
+      const conversationalPart = jsonStartIndex > 0 ? fullContent.substring(0, jsonStartIndex).trim() : fullContent;
+      conversationalResponse = conversationalPart || 'I understand. Let me help you with that.';
       return {
         id: Date.now().toString(),
         goal: userRequest,
