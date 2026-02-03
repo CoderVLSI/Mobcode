@@ -30,10 +30,19 @@ class MCPClient {
    */
   async connectServer(name: string, url: string): Promise<void> {
     try {
+      // Determine endpoint - Context7 uses direct URL, others may use /mcp/v1
+      const endpoint = url.includes('/mcp') && !url.includes('/v1') ? url : `${url}/mcp/v1`;
+
+      // Headers required for Context7 and other SSE-enabled MCP servers
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+      };
+
       // Initialize connection - fetch server info
-      const response = await fetch(`${url}/mcp/v1`, {
+      const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 1,
@@ -42,7 +51,7 @@ class MCPClient {
             protocolVersion: '2024-11-05',
             capabilities: {},
             clientInfo: {
-              name: 'cursor-clone-mobile',
+              name: 'mobcode',
               version: '1.0.0',
             },
           },
@@ -56,9 +65,9 @@ class MCPClient {
       }
 
       // Fetch available tools
-      const toolsResponse = await fetch(`${url}/mcp/v1`, {
+      const toolsResponse = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 2,
@@ -114,9 +123,18 @@ class MCPClient {
     }
 
     try {
-      const response = await fetch(`${server.url}/mcp/v1`, {
+      const endpoint = server.url.includes('/mcp') && !server.url.includes('/v1')
+        ? server.url
+        : `${server.url}/mcp/v1`;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+      };
+
+      const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: Date.now(),
