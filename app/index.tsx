@@ -96,6 +96,7 @@ export default function ChatScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const approvalResolverRef = useRef<((value: boolean) => void) | null>(null);
   const messageCounterRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     loadInitialData();
@@ -440,6 +441,15 @@ export default function ChatScreen() {
     handleAddImages(images);
   };
 
+  const stopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsTyping(false);
+    setAgentSteps([]);
+  };
+
   const sendMessage = async () => {
     const userInput = inputText.trim();
     if (userInput === '' || !currentChat || isTyping) return;
@@ -483,6 +493,10 @@ export default function ChatScreen() {
     setInputText('');
     setIsTyping(true);
     streamingMessageIdRef.current = null;
+
+    // Create new abort controller for this request
+    abortControllerRef.current = new AbortController();
+
     const attachmentContext = await buildAttachmentContext();
     const agentInput = attachmentContext ? `${attachmentContext}User request:\n${userInput}` : userInput;
     setAttachedFiles([]);
@@ -947,16 +961,26 @@ export default function ChatScreen() {
                   autoCorrect
                   enablesReturnKeyAutomatically
                   keyboardAppearance={isDarkMode ? 'dark' : 'light'}
+                  editable={!isTyping}
                 />
 
                 <View style={styles.inputActions}>
-                  <TouchableOpacity
-                    onPress={sendMessage}
-                    style={[styles.sendButtonCompact, inputText.trim() === '' && styles.sendButtonDisabled]}
-                    disabled={inputText.trim() === ''}
-                  >
-                    <Ionicons name="arrow-up" size={18} color={inputText.trim() ? '#fff' : theme.textSecondary} />
-                  </TouchableOpacity>
+                  {isTyping ? (
+                    <TouchableOpacity
+                      onPress={stopGeneration}
+                      style={[styles.sendButtonCompact, styles.stopButton]}
+                    >
+                      <Ionicons name="stop" size={18} color="#fff" />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={sendMessage}
+                      style={[styles.sendButtonCompact, inputText.trim() === '' && styles.sendButtonDisabled]}
+                      disabled={inputText.trim() === ''}
+                    >
+                      <Ionicons name="arrow-up" size={18} color={inputText.trim() ? '#fff' : theme.textSecondary} />
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             </View>
@@ -1010,16 +1034,26 @@ export default function ChatScreen() {
                 autoCorrect
                 enablesReturnKeyAutomatically
                 keyboardAppearance={isDarkMode ? 'dark' : 'light'}
+                editable={!isTyping}
               />
 
               <View style={styles.inputActions}>
-                <TouchableOpacity
-                  onPress={sendMessage}
-                  style={[styles.sendButtonCompact, inputText.trim() === '' && styles.sendButtonDisabled]}
-                  disabled={inputText.trim() === ''}
-                >
-                  <Ionicons name="arrow-up" size={18} color={inputText.trim() ? '#fff' : theme.textSecondary} />
-                </TouchableOpacity>
+                {isTyping ? (
+                  <TouchableOpacity
+                    onPress={stopGeneration}
+                    style={[styles.sendButtonCompact, styles.stopButton]}
+                  >
+                    <Ionicons name="stop" size={18} color="#fff" />
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={sendMessage}
+                    style={[styles.sendButtonCompact, inputText.trim() === '' && styles.sendButtonDisabled]}
+                    disabled={inputText.trim() === ''}
+                  >
+                    <Ionicons name="arrow-up" size={18} color={inputText.trim() ? '#fff' : theme.textSecondary} />
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           </View>
@@ -2204,6 +2238,9 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     backgroundColor: theme.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  stopButton: {
+    backgroundColor: '#ef4444',
   },
   taskBadgeSmall: {
     position: 'absolute',
