@@ -1555,6 +1555,38 @@ function ApprovalInlineCard({
     return 'flash';
   };
 
+  const getToolDisplayName = (toolName: string) => {
+    const nameMap: Record<string, string> = {
+      'read_file': '📂 Reading file',
+      'write_file': '✍️ Writing file',
+      'create_file': '📝 Creating file',
+      'delete_file': '🗑️ Deleting file',
+      'list_directory': '📋 Listing folder',
+      'search_files': '🔍 Searching files',
+      'run_command': '⚡ Running command',
+      'find_files': '🔎 Finding files',
+      'append_file': '📎 Appending to file',
+      'file_info': 'ℹ️ Getting file info',
+      'count_lines': '📊 Counting lines',
+      'list_imports': '📦 Listing imports',
+      'create_component': '🧩 Creating component',
+      'npm_info': '📦 Getting package info',
+      'npm_install': '⬇️ Installing packages',
+      'update_package_json': '📦 Updating package.json',
+      'init_project': '🚀 Initializing project',
+      'git_init': '🔧 Initializing git',
+      'git_status': '📊 Git status',
+      'git_add': '➕ Adding to git',
+      'git_commit': '💾 Committing',
+      'git_log': '📜 Git log',
+      'git_set_remote': '🌐 Setting remote',
+      'git_clone': '📥 Cloning repo',
+      'git_pull': '⬇️ Pulling changes',
+      'git_push': '⬆️ Pushing changes',
+    };
+    return nameMap[toolName] || `🔧 ${toolName}`;
+  };
+
   const getRiskLevel = (toolName: string) => {
     const highRisk = ['write_file', 'delete_file', 'run_command', 'create_file', 'git_init', 'git_commit', 'git_set_remote', 'git_clone', 'git_pull', 'git_push'];
     const mediumRisk = ['update_package_json', 'init_project', 'npm_install'];
@@ -1585,22 +1617,9 @@ function ApprovalInlineCard({
       <Text style={styles.approvalDescription}>{approval.description}</Text>
 
       <View style={styles.approvalToolRow}>
-        <Ionicons name="flash" size={12} color={theme.textSecondary} />
-        <Text style={styles.approvalToolText}>{approval.tool}</Text>
+        <Ionicons name={getToolIcon(approval.tool)} size={12} color={theme.accent} />
+        <Text style={styles.approvalToolText}>{getToolDisplayName(approval.tool)}</Text>
       </View>
-
-      {approval.parameters && Object.keys(approval.parameters).length > 0 && (
-        <View style={styles.approvalParams}>
-          {Object.entries(approval.parameters).map(([key, value]) => (
-            <View key={key} style={styles.approvalParamRow}>
-              <Text style={styles.approvalParamKey}>{key}:</Text>
-              <Text style={styles.approvalParamValue} numberOfLines={3}>
-                {JSON.stringify(value)}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
 
       {isPending ? (
         <View style={styles.approvalActions}>
