@@ -10,13 +10,8 @@
     ],
     "newArchEnabled": true,
     "plugins": [
-      [
-        "llama.rn",
-        {
-          "forceCxx20": true,
-          "enableOpenCLAndHexagon": false
-        }
-      ]
+      // llama.rn removed for Expo Go compatibility
+      // Use EAS build for local LLM support
     ],
     "ios": {
       "supportsTablet": true,

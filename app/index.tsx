@@ -43,6 +43,7 @@ import {
   ensureLocalModelReady,
   deleteLocalModel,
   getLocalModelInfo,
+  LOCAL_MODEL_AVAILABLE,
 } from '../utils/localLlama';
 import { previewBus, PreviewRequest } from '../utils/previewBus';
 
@@ -949,7 +950,7 @@ export default function ChatScreen() {
             <View style={styles.compactPickerContent}>
               <Text style={styles.pickerTitle}>Select Model</Text>
               <ScrollView style={styles.pickerList}>
-                {AI_MODELS.map((model) => (
+                {AI_MODELS.filter(m => LOCAL_MODEL_AVAILABLE || m.id !== LOCAL_MODEL_ID).map((model) => (
                   <TouchableOpacity
                     key={model.id}
                     style={[styles.pickerOption, selectedModel === model.id && styles.pickerOptionSelected]}

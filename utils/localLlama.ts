@@ -1,6 +1,18 @@
 import * as FileSystem from 'expo-file-system';
-import { initLlama, type LlamaContext } from 'llama.rn';
 import type { AIMessage, AIResponse } from './aiService';
+
+// Conditional import for llama.rn (only available in dev builds, not Expo Go)
+let initLlama: any;
+let LlamaContext: any;
+try {
+  const llamaModule = require('llama.rn');
+  initLlama = llamaModule.initLlama;
+  LlamaContext = llamaModule.LlamaContext;
+} catch (e) {
+  console.log('llama.rn not available - local model support disabled');
+}
+
+export const LOCAL_MODEL_AVAILABLE = !!initLlama;
 
 export const LOCAL_MODEL_ID = 'local-qwen2.5-coder-1.5b';
 export const LOCAL_MODEL_NAME = 'Qwen2.5 Coder 1.5B (Offline)';
@@ -30,8 +42,8 @@ const STOP_WORDS = [
   '<|end_of_turn|>',
 ];
 
-let llamaContext: LlamaContext | null = null;
-let initPromise: Promise<LlamaContext> | null = null;
+let llamaContext: any = null;
+let initPromise: Promise<any> | null = null;
 
 const ensureModelDir = async () => {
   await FileSystem.makeDirectoryAsync(getModelDir(), { intermediates: true });
@@ -91,6 +103,9 @@ export const ensureLocalModelReady = async (onProgress?: (progress: number) => v
 };
 
 export const getLocalLlamaContext = async () => {
+  if (!initLlama) {
+    throw new Error('Local LLM not available. Use a development build to enable this feature.');
+  }
   if (llamaContext) return llamaContext;
   if (!initPromise) {
     initPromise = (async () => {
@@ -119,6 +134,13 @@ export const streamLocalChat = async (
   messages: AIMessage[],
   onToken: (token: string) => void = () => {}
 ): Promise<AIResponse> => {
+  if (!initLlama) {
+    return {
+      content: '',
+      error: 'Local LLM not available in Expo Go. Use the development build APK for offline models.',
+    };
+  }
+
   try {
     const context = await getLocalLlamaContext();
     let streamed = '';
