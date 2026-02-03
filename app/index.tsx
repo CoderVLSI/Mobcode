@@ -1043,6 +1043,7 @@ export default function ChatScreen() {
           </View>
         </Modal>
       </View>
+      </SafeAreaView>
 
       <ChatHistory
         visible={showHistory}
@@ -1533,7 +1534,6 @@ export default function ChatScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-    </SafeAreaView>
   );
 }
 
