@@ -138,17 +138,31 @@ export function MCPManager({ visible, onClose }: MCPManagerProps) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.presetButton}
-                onPress={() => handleAddPreset('database')}
-              >
-                <Ionicons name="server" size={24} color={theme.accent} />
-                <Text style={styles.presetText}>Database</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetButton}
                 onPress={() => handleAddPreset('brave-search')}
               >
                 <Ionicons name="search" size={24} color={theme.accent} />
                 <Text style={styles.presetText}>Search</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.presetButton}
+                onPress={() => handleAddPreset('sequential-thinking')}
+              >
+                <Ionicons name="brain" size={24} color={theme.accent} />
+                <Text style={styles.presetText}>Thinking</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.presetButton}
+                onPress={() => handleAddPreset('fetch')}
+              >
+                <Ionicons name="globe" size={24} color={theme.accent} />
+                <Text style={styles.presetText}>Fetch</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.presetButton}
+                onPress={() => handleAddPreset('puppeteer')}
+              >
+                <Ionicons name="code-slash" size={24} color={theme.accent} />
+                <Text style={styles.presetText}>Browser</Text>
               </TouchableOpacity>
             </View>
           </View>
