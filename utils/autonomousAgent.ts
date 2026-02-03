@@ -136,6 +136,7 @@ class AutonomousAgent {
     let fullContent = '';
     let isJson = false;
     let checkedJson = false;
+    let hasStreamed = false;
 
     const response = await aiService.streamChat([
       {
@@ -196,6 +197,7 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
         content: userRequest,
       },
     ], model, customModels, apiKey, (token) => {
+      fullContent += token;
 
       // Determine if it's JSON or Chat
       if (!checkedJson && fullContent.trim().length > 0) {
@@ -208,18 +210,18 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
       // If it's NOT JSON, stream the tokens to the user
       // But only after we've confirmed it's not JSON
       if (checkedJson && !isJson && onStream) {
-        // If this is the first token after check, send the buffered content
-        if (fullContent.length === token.length + (fullContent.length - token.length)) {
-           // This logic is tricky. Simpler:
-           // If we just decided it's NOT JSON, we might have buffered a few chars (e.g. "H", "e").
-           // Ideally we send them now.
-           // For simplicity, just send 'token' if checkedJson is true.
-           // Note: The very first token(s) might be missed if we buffer too aggressively,
-           // but checking startsWith('{') usually happens on the first token unless it's whitespace.
-           onStream(token);
+        if (!hasStreamed) {
+          onStream(fullContent);
+          hasStreamed = true;
+        } else {
+          onStream(token);
         }
       }
     }, hfApiKey, geminiApiKey);
+
+    if (!fullContent && response?.content) {
+      fullContent = response.content;
+    }
 
     console.log('AI Response:', fullContent);
     console.log('Response length:', fullContent.length);
@@ -232,8 +234,22 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
       // Try to find JSON in the response
       const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        planData = JSON.parse(jsonMatch[0]);
-        console.log('Parsed plan:', planData);
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed && Array.isArray(parsed.steps)) {
+          planData = parsed;
+          console.log('Parsed plan:', planData);
+        } else {
+          conversationalResponse = fullContent;
+          console.log('Conversational response detected');
+          return {
+            id: Date.now().toString(),
+            goal: userRequest,
+            steps: [],
+            estimatedSteps: 0,
+            requiresApproval: [],
+            conversationalResponse,
+          };
+        }
       } else {
         // No JSON found - this is a conversational response
         conversationalResponse = fullContent;

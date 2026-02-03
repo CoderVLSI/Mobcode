@@ -496,4 +496,360 @@ const styles = StyleSheet.create({
       },
     ],
   },
+  {
+    id: 'spotify-clone',
+    name: 'Spotify Clone',
+    description: 'Music streaming app UI with playlists and now playing',
+    icon: 'musical-notes',
+    category: 'Apps',
+    files: [
+      {
+        name: 'SpotifyClone.tsx',
+        language: 'typescript',
+        content: `import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  Image,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  TextInput,
+  FlatList,
+  Dimensions,
+} from 'react-native';
+
+const { width } = Dimensions.get('window');
+
+interface Song {
+  id: string;
+  title: string;
+  artist: string;
+  duration: string;
+  cover: string;
+}
+
+interface Playlist {
+  id: string;
+  name: string;
+  cover: string;
+  songs: Song[];
+}
+
+const PLAYLISTS: Playlist[] = [
+  {
+    id: '1',
+    name: 'Liked Songs',
+    cover: '💚',
+    songs: [
+      { id: '1', title: 'Blinding Lights', artist: 'The Weeknd', duration: '3:20', cover: '🎵' },
+      { id: '2', title: 'Levitating', artist: 'Dua Lipa', duration: '3:23', cover: '🎶' },
+      { id: '3', title: 'Stay', artist: 'The Kid LAROI', duration: '2:21', cover: '🎤' },
+    ],
+  },
+  {
+    id: '2',
+    name: 'Chill Vibes',
+    cover: '🌊',
+    songs: [
+      { id: '4', title: 'Heat Waves', artist: 'Glass Animals', duration: '3:58', cover: '🔥' },
+      { id: '5', title: 'Sweater Weather', artist: 'The Neighbourhood', duration: '4:00', cover: '🧥' },
+    ],
+  },
+  {
+    id: '3',
+    name: 'Workout Mix',
+    cover: '💪',
+    songs: [
+      { id: '6', title: 'Stronger', artist: 'Kanye West', duration: '5:11', cover: '💎' },
+      { id: '7', title: 'Lose Yourself', artist: 'Eminem', duration: '5:26', cover: '🎙️' },
+    ],
+  },
+];
+
+export default function SpotifyClone() {
+  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist>(PLAYLISTS[0]);
+  const [currentSong, setCurrentSong] = useState<Song | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredPlaylists = PLAYLISTS.filter(p =>
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.songs.some(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const playSong = (song: Song) => {
+    setCurrentSong(song);
+    setIsPlaying(true);
+  };
+
+  const togglePlayPause = () => {
+    setIsPlaying(!isPlaying);
+  };
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.logo}>Spotify</Text>
+        <TouchableOpacity style={styles.profileAvatar}>
+          <Text style={styles.avatarText}>👤</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search songs, artists..."
+          placeholderTextColor="#888"
+        />
+      </View>
+
+      {/* Content */}
+      <ScrollView style={styles.content}>
+        {/* Featured Horizontal */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recently Played</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {PLAYLISTS.map((playlist) => (
+              <TouchableOpacity
+                key={playlist.id}
+                style={styles.featuredCard}
+                onPress={() => setSelectedPlaylist(playlist)}
+              >
+                <Text style={styles.featuredCover}>{playlist.cover}</Text>
+                <Text style={styles.featuredTitle} numberOfLines={1}>{playlist.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Playlists */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Your Playlists</Text>
+          {filteredPlaylists.map((playlist) => (
+            <TouchableOpacity
+              key={playlist.id}
+              style={[styles.playlistItem, selectedPlaylist.id === playlist.id && styles.playlistItemActive]}
+              onPress={() => setSelectedPlaylist(playlist)}
+            >
+              <Text style={styles.playlistCover}>{playlist.cover}</Text>
+              <View style={styles.playlistInfo}>
+                <Text style={styles.playlistName}>{playlist.name}</Text>
+                <Text style={styles.playlistMeta}>{playlist.songs.length} songs</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Songs */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{selectedPlaylist.name}</Text>
+          {selectedPlaylist.songs.map((song) => (
+            <TouchableOpacity
+              key={song.id}
+              style={[styles.songItem, currentSong?.id === song.id && styles.songItemActive]}
+              onPress={() => playSong(song)}
+            >
+              <Text style={styles.songCover}>{song.cover}</Text>
+              <View style={styles.songInfo}>
+                <Text style={[styles.songTitle, currentSong?.id === song.id && styles.songTitleActive]}>{song.title}</Text>
+                <Text style={styles.songArtist}>{song.artist}</Text>
+              </View>
+              <Text style={styles.songDuration}>{song.duration}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Now Playing Bar */}
+      {currentSong && (
+        <View style={styles.nowPlaying}>
+          <Text style={styles.nowPlayingCover}>{currentSong.cover}</Text>
+          <View style={styles.nowPlayingInfo}>
+            <Text style={styles.nowPlayingTitle} numberOfLines={1}>{currentSong.title}</Text>
+            <Text style={styles.nowPlayingArtist}>{currentSong.artist}</Text>
+          </View>
+          <View style={styles.nowPlayingControls}>
+            <TouchableOpacity onPress={togglePlayPause}>
+              <Text style={styles.playPauseButton}>{isPlaying ? '⏸' : '▶️'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#121212',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 16,
+    backgroundColor: '#000',
+  },
+  logo: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1DB954',
+  },
+  profileAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#282828',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 16,
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    backgroundColor: '#000',
+  },
+  searchInput: {
+    backgroundColor: '#282828',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#fff',
+  },
+  content: {
+    flex: 1,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#fff',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  horizontalScroll: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+  },
+  featuredCard: {
+    width: 140,
+    marginRight: 12,
+    alignItems: 'center',
+  },
+  featuredCover: {
+    fontSize: 48,
+    marginBottom: 8,
+  },
+  featuredTitle: {
+    fontSize: 14,
+    color: '#fff',
+    textAlign: 'center',
+  },
+  playlistItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  playlistItemActive: {
+    backgroundColor: '#282828',
+  },
+  playlistCover: {
+    fontSize: 48,
+  },
+  playlistInfo: {
+    flex: 1,
+  },
+  playlistName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  playlistMeta: {
+    fontSize: 14,
+    color: '#888',
+  },
+  songItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 12,
+  },
+  songItemActive: {
+    backgroundColor: '#282828',
+  },
+  songCover: {
+    fontSize: 40,
+  },
+  songInfo: {
+    flex: 1,
+  },
+  songTitle: {
+    fontSize: 16,
+    color: '#fff',
+    marginBottom: 2,
+  },
+  songTitleActive: {
+    color: '#1DB954',
+  },
+  songArtist: {
+    fontSize: 14,
+    color: '#888',
+  },
+  songDuration: {
+    fontSize: 14,
+    color: '#888',
+  },
+  nowPlaying: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#181818',
+    borderTopWidth: 1,
+    borderTopColor: '#282828',
+    gap: 12,
+  },
+  nowPlayingCover: {
+    fontSize: 40,
+  },
+  nowPlayingInfo: {
+    flex: 1,
+  },
+  nowPlayingTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  nowPlayingArtist: {
+    fontSize: 12,
+    color: '#888',
+  },
+  nowPlayingControls: {
+    paddingHorizontal: 8,
+  },
+  playPauseButton: {
+    fontSize: 24,
+  },
+});`,
+      },
+    ],
+  },
 ];

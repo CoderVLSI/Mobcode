@@ -36,6 +36,12 @@
     },
     "web": {
       "bundler": "metro"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "336c4952-d624-4e1a-93d5-adeb82049209"
+      }
+    },
+    "owner": "indiccoder"
   }
 }

@@ -238,11 +238,11 @@ class AIService {
         return;
       }
 
-      // Map model names to Gemini API model IDs
+      // Use stable Gemini model IDs directly.
       const modelMap: Record<string, string> = {
-        'gemini-2.5-flash': 'gemini-2.0-flash-exp',
-        'gemini-2.5-flash-lite': 'gemini-2.0-flash-thinking-exp',
-        'gemini-2.5-pro': 'gemini-2.5-pro-exp-09-24',
+        'gemini-2.5-flash': 'gemini-2.5-flash',
+        'gemini-2.5-flash-lite': 'gemini-2.5-flash-lite',
+        'gemini-2.5-pro': 'gemini-2.5-pro',
         'gemini-1.5-flash': 'gemini-1.5-flash',
         'gemini-1.5-pro': 'gemini-1.5-pro',
       };
@@ -265,36 +265,180 @@ class AIService {
       xhr.setRequestHeader('Content-Type', 'application/json');
 
       let fullContent = '';
+      let lastIndex = 0;
+      let pending = '';
 
-      xhr.onprogress = () => {
-        const lines = xhr.responseText.split('\n');
+      const extractText = (data: any) => {
+        const parts = data?.candidates?.[0]?.content?.parts;
+        if (!Array.isArray(parts)) return '';
+        return parts.map((part: any) => part?.text || '').join('');
+      };
+
+      const extractError = (data: any) => {
+        const message =
+          data?.error?.message ||
+          data?.promptFeedback?.blockReasonMessage ||
+          data?.promptFeedback?.blockReason ||
+          data?.error;
+        if (!message) return '';
+        return typeof message === 'string' ? message : JSON.stringify(message);
+      };
+
+      const handleJson = (jsonText: string) => {
+        try {
+          const data = JSON.parse(jsonText);
+          const text = extractText(data);
+          if (text) {
+            fullContent += text;
+            onToken(text);
+            return;
+          }
+          const errorText = extractError(data);
+          if (errorText) {
+            fullContent += errorText;
+            onToken(errorText);
+          }
+        } catch (e) {
+          // Ignore parse errors for partial chunks
+        }
+      };
+
+      const handleLine = (line: string) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        if (trimmed.startsWith('data:')) {
+          const payload = trimmed.slice(5).trim();
+          if (payload === '[DONE]') return;
+          handleJson(payload);
+          return;
+        }
+        if (trimmed.startsWith('{')) {
+          handleJson(trimmed);
+        }
+      };
+
+      const extractFromResponse = (responseText: string) => {
+        const lines = responseText.split('\n');
+        let combined = '';
         for (const line of lines) {
           const trimmed = line.trim();
-          if (trimmed.startsWith('data: ')) {
+          if (!trimmed) continue;
+          if (trimmed.startsWith('data:')) {
+            const payload = trimmed.slice(5).trim();
+            if (payload === '[DONE]') continue;
             try {
-              const data = JSON.parse(trimmed.slice(6));
-              const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-              if (text) {
-                fullContent += text;
-                onToken(text);
-              }
+              const data = JSON.parse(payload);
+              combined += extractText(data) || extractError(data);
             } catch (e) {
-              // Ignore parse errors for partial chunks
+              // Ignore parse errors
+            }
+          } else if (trimmed.startsWith('{')) {
+            try {
+              const data = JSON.parse(trimmed);
+              combined += extractText(data) || extractError(data);
+            } catch (e) {
+              // Ignore parse errors
             }
           }
+        }
+        if (combined) return combined;
+        try {
+          const data = JSON.parse(responseText);
+          return extractText(data) || extractError(data);
+        } catch (e) {
+          return '';
+        }
+      };
+
+      const fallbackRequest = async (): Promise<AIResponse> => {
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(requestBody),
+            }
+          );
+
+          const rawText = await response.text();
+          if (!response.ok) {
+            const errorText = rawText || `API Error (${response.status})`;
+            return { content: errorText, error: errorText };
+          }
+
+          let data: any = null;
+          try {
+            data = JSON.parse(rawText);
+          } catch (e) {
+            return { content: rawText || 'No response from API', error: 'Invalid JSON response' };
+          }
+
+          const text = extractText(data) || extractError(data) || '';
+          return { content: text || 'No response from API' };
+        } catch (error) {
+          const message = (error as Error).message || String(error);
+          return { content: 'Network error: ' + message, error: message };
+        }
+      };
+
+      let resolved = false;
+
+      const finish = (response: AIResponse) => {
+        if (resolved) return;
+        resolved = true;
+        resolve(response);
+      };
+
+      xhr.onprogress = () => {
+        const currIndex = xhr.responseText.length;
+        if (lastIndex === currIndex) return;
+
+        const chunk = pending + xhr.responseText.substring(lastIndex, currIndex);
+        lastIndex = currIndex;
+
+        const lines = chunk.split('\n');
+        pending = lines.pop() || '';
+        for (const line of lines) {
+          handleLine(line);
         }
       };
 
       xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve({ content: fullContent });
-        } else {
-          resolve({ content: xhr.responseText, error: 'API Error' });
+        if (pending.trim().length > 0) {
+          handleLine(pending);
+          pending = '';
         }
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+          if (!fullContent) {
+            const fallback = extractFromResponse(xhr.responseText);
+            if (fallback) {
+              fullContent = fallback;
+              onToken(fallback);
+              return finish({ content: fullContent });
+            }
+            fallbackRequest().then((response) => {
+              if (response.content) onToken(response.content);
+              finish(response);
+            });
+            return;
+          }
+          finish({ content: fullContent });
+          return;
+        }
+
+        fallbackRequest().then((response) => {
+          if (response.content) onToken(response.content);
+          finish(response);
+        });
       };
 
       xhr.onerror = () => {
-        resolve({ content: 'Network error', error: 'Network error' });
+        fallbackRequest().then((response) => {
+          if (response.content) onToken(response.content);
+          finish(response);
+        });
       };
 
       const requestBody: any = {
