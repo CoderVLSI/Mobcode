@@ -70,6 +70,7 @@ export default function ChatScreen() {
   const [openAIKey, setOpenAIKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
+  const [glmKey, setGlmKey] = useState('');
   const [showOpenAIInput, setShowOpenAIInput] = useState(false);
   const [showFileSearch, setShowFileSearch] = useState(false);
   const [pendingFileOperations, setPendingFileOperations] = useState<FileOperation[]>([]);
@@ -221,6 +222,8 @@ export default function ChatScreen() {
     setAnthropicKey(anthropicKey);
     const geminiKey = await storage.getGeminiKey();
     setGeminiKey(geminiKey);
+    const glmKey = await storage.getGlmKey();
+    setGlmKey(glmKey);
 
     await refreshLocalModelInfo();
     await ensureSampleWebsite();
@@ -491,6 +494,8 @@ export default function ChatScreen() {
       apiKey = anthropicKey || undefined;
     } else if (selectedModel.startsWith('gemini')) {
       geminiApiKey = geminiKey || undefined;
+    } else if (selectedModel.startsWith('glm')) {
+      apiKey = glmKey || undefined;
     }
 
     const handleStream = (token: string) => {
@@ -1223,6 +1228,39 @@ export default function ChatScreen() {
                     onPress={async () => {
                       await storage.setGeminiKey(geminiKey);
                       Alert.alert('Success', 'Gemini API key saved');
+                    }}
+                  >
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.settingSection}>
+                <Text style={styles.sectionTitle}>Zhipu GLM API</Text>
+                <View style={styles.settingItem}>
+                  <Ionicons name="code-slash" size={20} color={theme.accent} />
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingLabel}>GLM API Key</Text>
+                    <Text style={styles.settingValue}>
+                      {glmKey ? '••••' + glmKey.slice(-4) : 'Not set'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.apiInputContainer}>
+                  <TextInput
+                    style={styles.apiInput}
+                    value={glmKey}
+                    onChangeText={setGlmKey}
+                    placeholder="Your Zhipu AI API key"
+                    placeholderTextColor={theme.placeholder}
+                    secureTextEntry
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={styles.saveButton}
+                    onPress={async () => {
+                      await storage.setGlmKey(glmKey);
+                      Alert.alert('Success', 'GLM API key saved');
                     }}
                   >
                     <Text style={styles.saveButtonText}>Save</Text>

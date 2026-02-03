@@ -77,6 +77,7 @@ const OPENAI_KEY_KEY = '@cursor_openai_key';
 const ANTHROPIC_KEY_KEY = '@cursor_anthropic_key';
 const HF_KEY_KEY = '@cursor_hf_key';
 const GEMINI_KEY_KEY = '@cursor_gemini_key';
+const GLM_KEY_KEY = '@cursor_glm_key';
 const GIT_SETTINGS_KEY = '@cursor_git_settings';
 
 export const storage = {
@@ -302,6 +303,26 @@ export const storage = {
       await AsyncStorage.setItem(GEMINI_KEY_KEY, key);
     } catch (error) {
       console.error('Error setting Gemini key:', error);
+    }
+  },
+
+  // Get GLM API key
+  async getGlmKey(): Promise<string> {
+    try {
+      const key = await AsyncStorage.getItem(GLM_KEY_KEY);
+      return key || '';
+    } catch (error) {
+      console.error('Error getting GLM key:', error);
+      return '';
+    }
+  },
+
+  // Set GLM API key
+  async setGlmKey(key: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem(GLM_KEY_KEY, key);
+    } catch (error) {
+      console.error('Error setting GLM key:', error);
     }
   },
 

@@ -1,5 +1,19 @@
 export const AI_MODELS = [
   {
+    id: 'glm-4.7-coder',
+    name: 'GLM-4.7 Coder',
+    provider: 'Zhipu AI',
+    icon: 'code-slash',
+    description: 'Chinese coding model with strong performance',
+  },
+  {
+    id: 'glm-4-coder',
+    name: 'GLM-4 Coder',
+    provider: 'Zhipu AI',
+    icon: 'code-working',
+    description: 'Fast Chinese coding assistant',
+  },
+  {
     id: 'local-qwen2.5-coder-1.5b',
     name: 'Local Qwen2.5 Coder 1.5B',
     provider: 'On-device',

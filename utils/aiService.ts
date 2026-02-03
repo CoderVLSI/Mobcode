@@ -68,6 +68,8 @@ class AIService {
       return this.streamAnthropic(messages, model, apiKey, onToken);
     } else if (model.startsWith('gemini')) {
       return this.streamGemini(messages, model, geminiApiKey, onToken);
+    } else if (model.startsWith('glm')) {
+      return this.streamGLM(messages, model, apiKey, onToken);
     } else if (model === LOCAL_MODEL_ID) {
       return this.streamLocal(messages, onToken);
     } else if (model.startsWith('hf-') || model.startsWith('liquidai/') || model.includes('/')) {
@@ -466,6 +468,84 @@ class AIService {
     return streamLocalChat(messages, onToken);
   }
 
+  private streamGLM(
+    messages: AIMessage[],
+    model: string,
+    apiKey: string | undefined,
+    onToken: (token: string) => void
+  ): Promise<AIResponse> {
+    return new Promise((resolve) => {
+      if (!apiKey) {
+        resolve({
+          content: 'Please add your Zhipu AI API key in Settings.',
+          error: 'No API key provided',
+        });
+        return;
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', 'https://api.z.ai/api/coding/paas/v4/chat/completions');
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Authorization', `Bearer ${apiKey}`);
+
+      let lastIndex = 0;
+      let fullContent = '';
+
+      xhr.onprogress = () => {
+        const currIndex = xhr.responseText.length;
+        if (lastIndex === currIndex) return;
+
+        const chunk = xhr.responseText.substring(lastIndex, currIndex);
+        lastIndex = currIndex;
+
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
+            try {
+              const data = JSON.parse(trimmed.slice(6));
+              const token = data.choices?.[0]?.delta?.content || '';
+              if (token) {
+                fullContent += token;
+                onToken(token);
+              }
+            } catch (e) {
+              // Ignore parse errors for partial chunks
+            }
+          }
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ content: fullContent });
+        } else {
+          resolve({ content: `GLM API Error: ${xhr.status}`, error: 'API Error' });
+        }
+      };
+
+      xhr.onerror = () => {
+        resolve({ content: 'Network error connecting to GLM API', error: 'Network error' });
+      };
+
+      // Map model names to GLM model IDs
+      const modelMap: Record<string, string> = {
+        'glm-4.7-coder': 'glm-4-coder',
+        'glm-4-coder': 'glm-4-coder',
+      };
+
+      const glmModel = modelMap[model] || model;
+
+      xhr.send(JSON.stringify({
+        model: glmModel,
+        messages: messages,
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 2000,
+      }));
+    });
+  }
+
   async chat(
     messages: AIMessage[],
     model: string,
@@ -488,6 +568,8 @@ class AIService {
       return this.callAnthropic(messages, model, apiKey);
     } else if (model.startsWith('gpt')) {
       return this.callOpenAI(messages, model, apiKey);
+    } else if (model.startsWith('glm')) {
+      return this.callGLM(messages, model, apiKey);
     }
 
     return {
@@ -522,6 +604,56 @@ class AIService {
         const error = await response.text();
         return {
           content: `API Error (${response.status}): ${error}`,
+          error: error,
+        };
+      }
+
+      const data: OpenAIResponse = await response.json();
+      return {
+        content: data.choices[0]?.message?.content || 'No response from API',
+      };
+    } catch (error) {
+      return {
+        content: 'Network error: ' + (error as Error).message,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  private async callGLM(messages: AIMessage[], model: string, apiKey?: string): Promise<AIResponse> {
+    if (!apiKey) {
+      return {
+        content: 'Please add your Zhipu AI API key in settings to use GLM models.',
+        error: 'No API key provided',
+      };
+    }
+
+    try {
+      const modelMap: Record<string, string> = {
+        'glm-4.7-coder': 'glm-4-coder',
+        'glm-4-coder': 'glm-4-coder',
+      };
+
+      const glmModel = modelMap[model] || model;
+
+      const response = await fetch('https://api.z.ai/api/coding/paas/v4/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: glmModel,
+          messages: messages,
+          max_tokens: 2000,
+          temperature: 0.7,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        return {
+          content: `GLM API Error (${response.status}): ${error}`,
           error: error,
         };
       }
