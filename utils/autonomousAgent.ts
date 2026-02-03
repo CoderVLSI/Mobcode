@@ -104,20 +104,40 @@ class AutonomousAgent {
             tool: s.tool,
             description: s.description,
             status: s.status,
-            result: s.result,
+            // Only include success/error status, not raw output
+            success: s.status === 'completed',
             error: s.error,
           }));
-        
+
+        // Create a simple summary of what was done
+        const completedSteps = toolResults.filter(t => t.success);
+        const failedSteps = toolResults.filter(t => !t.success);
+
+        let summaryPrompt = `User asked: "${userRequest}"\n\n`;
+        summaryPrompt += `Completed ${completedSteps.length} tasks:\n`;
+        completedSteps.forEach((s, i) => {
+          summaryPrompt += `${i + 1}. ${s.description}\n`;
+        });
+
+        if (failedSteps.length > 0) {
+          summaryPrompt += `\nFailed ${failedSteps.length} tasks:\n`;
+          failedSteps.forEach((s, i) => {
+            summaryPrompt += `${i + 1}. ${s.description}: ${s.error}\n`;
+          });
+        }
+
+        summaryPrompt += `\n\nPlease provide a friendly summary to the user. Focus on what was accomplished. Keep it concise and conversational. Do NOT show any JSON or technical details - just explain what you did in plain language.`;
+
         // Use streaming for the summary too
         let summaryText = '';
         await aiService.streamChat([
           {
             role: 'system',
-            content: 'You are a helpful assistant. The user asked a question and the AI assistant used tools to gather information. Your job is to explain the results in a conversational, friendly way. Focus on what the user actually asked, not just dumping raw data. Be helpful and concise.',
+            content: 'You are a helpful coding assistant. Explain what was accomplished in simple, conversational language. Never show JSON, tool names, or technical details.',
           },
           {
             role: 'user',
-            content: `User asked: "${userRequest}"\n\nTool results:\n${JSON.stringify(toolResults, null, 2)}\n\nPlease explain these results to the user in a conversational way. Answer what they actually asked.`,
+            content: summaryPrompt,
           },
         ], model, customModels, apiKey, (token) => {
           summaryText += token;
