@@ -117,6 +117,13 @@ export function MCPManager({ visible, onClose }: MCPManagerProps) {
             <View style={styles.presetGrid}>
               <TouchableOpacity
                 style={styles.presetButton}
+                onPress={() => handleAddPreset('context7')}
+              >
+                <Ionicons name="book" size={24} color={theme.accent} />
+                <Text style={styles.presetText}>Context7</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.presetButton}
                 onPress={() => handleAddPreset('filesystem')}
               >
                 <Ionicons name="folder" size={24} color={theme.accent} />

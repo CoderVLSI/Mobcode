@@ -190,6 +190,7 @@ class MCPClient {
    */
   async addPresetServer(preset: string): Promise<void> {
     const presets: Record<string, string> = {
+      'context7': 'https://mcp.context7.com/mcp',
       'filesystem': 'http://localhost:3000/mcp',
       'github': 'http://localhost:3001/mcp',
       'database': 'http://localhost:3002/mcp',
