@@ -34,6 +34,11 @@ class AutonomousAgent {
     onStream?: (token: string) => void,
     history: AIMessage[] = []
   ) {
+    console.log('=== AGENT EXECUTE TASK START ===');
+    console.log('User Request:', userRequest);
+    console.log('Model:', model);
+    console.log('Available Tools:', availableTools.length);
+
     const plan = await this.createPlan(
       userRequest,
       availableTools,
@@ -45,6 +50,10 @@ class AutonomousAgent {
       onStream,
       history
     );
+
+    console.log('Plan created with', plan.steps.length, 'steps');
+    console.log('Estimated steps:', plan.estimatedSteps);
+    console.log('Requires approval:', plan.requiresApproval.length);
     onProgress({
       id: 'plan',
       description: `Plan: ${plan.steps.length} steps`,
@@ -54,6 +63,8 @@ class AutonomousAgent {
     }, plan.steps);
 
     if (plan.steps.length === 0 && plan.conversationalResponse) {
+      console.log('=== CONVERSATIONAL RESPONSE (NO TOOLS) ===');
+      console.log('Response:', plan.conversationalResponse.substring(0, 200));
       return {
         success: true,
         plan,
@@ -65,38 +76,58 @@ class AutonomousAgent {
 
     let completed = 0, failed = 0;
 
+    console.log('=== EXECUTING STEPS ===');
     for (const step of plan.steps) {
+      console.log('--- Step:', step.description);
+      console.log('Tool:', step.tool);
+      console.log('Needs approval:', plan.requiresApproval.includes(step.id));
+
       if (plan.requiresApproval.includes(step.id)) {
+        console.log('Waiting for user approval...');
         const approved = await onApprovalNeeded(step);
+        console.log('Approved:', approved);
         if (!approved) {
           step.status = 'failed';
           failed++;
           onProgress(step, plan.steps);
+          console.log('Step denied by user');
           continue;
         }
       }
 
       step.status = 'executing';
       onProgress(step, plan.steps);
+      console.log('Executing step...');
 
       try {
         const result = await toolRegistry.execute(step.tool, step.parameters);
+        console.log('Step result success:', result.success);
+        if (!result.success) {
+          console.log('Step error:', result.error);
+        }
         step.result = result;
         step.status = result.success ? 'completed' : 'failed';
         result.success ? completed++ : failed++;
       } catch (e) {
+        console.log('Step exception:', String(e));
         step.status = 'failed';
         step.error = String(e);
         failed++;
       }
 
+      console.log('Step status:', step.status);
       onProgress(step, plan.steps);
     }
+
+    console.log('=== ALL STEPS COMPLETE ===');
+    console.log('Completed:', completed);
+    console.log('Failed:', failed);
 
     // Get conversational summary of results
     let conversationalSummary = `Completed ${completed} steps, ${failed} failed`;
 
     if (completed > 0 || failed > 0) {
+      console.log('=== GENERATING CONVERSATIONAL SUMMARY ===');
       try {
         const toolResults = plan.steps
           .filter(s => s.status === 'completed' || s.status === 'failed')
@@ -113,6 +144,9 @@ class AutonomousAgent {
         const completedSteps = toolResults.filter(t => t.success);
         const failedSteps = toolResults.filter(t => !t.success);
 
+        console.log('Completed steps:', completedSteps.length);
+        console.log('Failed steps:', failedSteps.length);
+
         let summaryPrompt = `User asked: "${userRequest}"\n\n`;
         summaryPrompt += `Completed ${completedSteps.length} tasks:\n`;
         completedSteps.forEach((s, i) => {
@@ -127,6 +161,8 @@ class AutonomousAgent {
         }
 
         summaryPrompt += `\n\nPlease provide a friendly summary to the user. Focus on what was accomplished. Keep it concise and conversational. Do NOT show any JSON or technical details - just explain what you did in plain language.`;
+
+        console.log('Summary prompt:', summaryPrompt);
 
         // Use streaming for the summary too
         let summaryText = '';
@@ -144,6 +180,9 @@ class AutonomousAgent {
           if (onStream) onStream(token);
         }, hfApiKey, geminiApiKey);
 
+        console.log('Summary generated, length:', summaryText.length);
+        console.log('Summary preview:', summaryText.substring(0, 200));
+
         if (summaryText) {
           conversationalSummary = summaryText;
         }
@@ -152,6 +191,9 @@ class AutonomousAgent {
         // Fall back to default summary
       }
     }
+
+    console.log('=== AGENT TASK COMPLETE ===');
+    console.log('Final output length:', conversationalSummary.length);
 
     return {
       success: failed === 0,
@@ -173,6 +215,11 @@ class AutonomousAgent {
     onStream?: (token: string) => void,
     history: AIMessage[] = []
   ): Promise<ExecutionPlan> {
+    console.log('=== CREATING PLAN ===');
+    console.log('User request:', userRequest);
+    console.log('Available tools:', availableTools.length);
+    console.log('History messages:', history.length);
+
     const toolsDesc = toolRegistry.formatForAI();
 
     let fullContent = '';
@@ -183,6 +230,8 @@ class AutonomousAgent {
     const sanitizedHistory = history
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .filter((m) => m.content && m.content.trim().length > 0);
+
+    console.log('Sanitized history length:', sanitizedHistory.length);
 
     const response = await aiService.streamChat([
       {
@@ -266,12 +315,17 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
       }
     }, hfApiKey, geminiApiKey);
 
+    console.log('AI Response received');
+    console.log('Response length:', fullContent.length);
+    console.log('Is JSON:', isJson);
+    console.log('Response preview:', fullContent.substring(0, 500));
+
     if (!fullContent && response?.content) {
       fullContent = response.content;
     }
 
-    console.log('AI Response:', fullContent);
-    console.log('Response length:', fullContent.length);
+    console.log('AI Response received');
+    console.log('Full content length:', fullContent.length);
 
     // Try to parse JSON from response
     let planData: any = { goal: userRequest, steps: [] };
@@ -281,11 +335,17 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
       // Try to find JSON in the response
       const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
+        console.log('JSON pattern found, attempting to parse...');
         const parsed = JSON.parse(jsonMatch[0]);
         if (parsed && Array.isArray(parsed.steps)) {
           planData = parsed;
-          console.log('Parsed plan:', planData);
+          console.log('Plan parsed successfully');
+          console.log('Steps in plan:', parsed.steps.length);
+          parsed.steps.forEach((s: any, i: number) => {
+            console.log(`  Step ${i + 1}:`, s.description, '| Tool:', s.tool);
+          });
         } else {
+          console.log('JSON parsed but not a valid plan structure');
           conversationalResponse = fullContent;
           console.log('Conversational response detected');
           return {
@@ -299,6 +359,7 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
         }
       } else {
         // No JSON found - this is a conversational response
+        console.log('No JSON pattern found, treating as conversational');
         conversationalResponse = fullContent;
         console.log('Conversational response detected');
         return {
@@ -312,6 +373,7 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
       }
     } catch (e) {
       console.error('Failed to parse AI response:', e);
+      console.error('Response content:', fullContent.substring(0, 500));
       // If parsing fails, treat as conversational response
       conversationalResponse = fullContent;
       return {
@@ -325,6 +387,11 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
     }
 
     const steps = (planData.steps || []).map((s: any) => ({ ...s, status: 'pending' as const }));
+
+    console.log('=== PLAN CREATED ===');
+    console.log('Goal:', planData.goal || userRequest);
+    console.log('Total steps:', steps.length);
+    console.log('Needs approval:', steps.filter((s: any) => s.requiresApproval).map((s: any) => s.id));
 
     return {
       id: Date.now().toString(),

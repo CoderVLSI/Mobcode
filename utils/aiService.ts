@@ -51,36 +51,62 @@ class AIService {
     hfApiKey?: string,
     geminiApiKey?: string
   ): Promise<AIResponse> {
+    // Log incoming request
+    console.log('=== AI SERVICE STREAM REQUEST ===');
+    console.log('Model:', model);
+    console.log('Messages count:', messages.length);
+    console.log('Last user message:', messages[messages.length - 1]?.content?.substring(0, 200) || 'No message');
+
     // Check if it's a custom model
     const customModel = customModels.find((m) => m.id === model);
 
     if (customModel) {
+      console.log('Using custom model:', customModel.name);
       // For now, treat custom models as non-streaming unless we implement generic SSE
       // Fallback to normal chat but call onToken at the end
       const response = await this.callCustomAPI(messages, customModel);
+      console.log('Custom model response length:', response.content?.length || 0);
       onToken(response.content);
       return response;
     }
 
+    let result: AIResponse;
+
     if (model.startsWith('gpt')) {
-      return this.streamOpenAI(messages, model, apiKey, onToken);
+      console.log('Routing to OpenAI stream');
+      result = await this.streamOpenAI(messages, model, apiKey, onToken);
     } else if (model.startsWith('claude') || model.startsWith('anthropic')) {
-      return this.streamAnthropic(messages, model, apiKey, onToken);
+      console.log('Routing to Anthropic stream');
+      result = await this.streamAnthropic(messages, model, apiKey, onToken);
     } else if (model.startsWith('gemini')) {
-      return this.streamGemini(messages, model, geminiApiKey, onToken);
+      console.log('Routing to Gemini stream');
+      result = await this.streamGemini(messages, model, geminiApiKey, onToken);
     } else if (model.startsWith('glm')) {
-      return this.streamGLM(messages, model, apiKey, onToken);
+      console.log('Routing to GLM stream');
+      result = await this.streamGLM(messages, model, apiKey, onToken);
     } else if (model === LOCAL_MODEL_ID) {
-      return this.streamLocal(messages, onToken);
+      console.log('Routing to Local model');
+      result = await this.streamLocal(messages, onToken);
     } else if (model.startsWith('hf-') || model.startsWith('liquidai/') || model.includes('/')) {
+      console.log('Routing to HuggingFace stream');
       // Hugging Face model (hf- prefix or contains / like "LiquidAI/LFM2.5-1.2B-Thinking")
-      return await this.streamHuggingFace(messages, model, hfApiKey, onToken);
+      result = await this.streamHuggingFace(messages, model, hfApiKey, onToken);
+    } else {
+      console.log('ERROR: Unsupported model', model);
+      result = {
+        content: 'Model not supported for streaming.',
+        error: 'Unsupported model',
+      };
     }
 
-    return {
-      content: 'Model not supported for streaming.',
-      error: 'Unsupported model',
-    };
+    console.log('=== STREAM RESPONSE COMPLETE ===');
+    console.log('Response length:', result.content?.length || 0);
+    console.log('Has error:', !!result.error);
+    if (result.error) {
+      console.log('Error:', result.error);
+    }
+
+    return result;
   }
 
   private streamOpenAI(
@@ -475,7 +501,11 @@ class AIService {
     onToken: (token: string) => void
   ): Promise<AIResponse> {
     return new Promise((resolve) => {
+      console.log('=== GLM STREAM START ===');
+      console.log('GLM Model:', model);
+
       if (!apiKey) {
+        console.log('ERROR: No GLM API key provided');
         resolve({
           content: 'Please add your Zhipu AI API key in Settings.',
           error: 'No API key provided',
@@ -490,6 +520,7 @@ class AIService {
 
       let lastIndex = 0;
       let fullContent = '';
+      let tokenCount = 0;
 
       xhr.onprogress = () => {
         const currIndex = xhr.responseText.length;
@@ -507,6 +538,7 @@ class AIService {
               const token = data.choices?.[0]?.delta?.content || '';
               if (token) {
                 fullContent += token;
+                tokenCount++;
                 onToken(token);
               }
             } catch (e) {
@@ -517,14 +549,22 @@ class AIService {
       };
 
       xhr.onload = () => {
+        console.log('=== GLM STREAM COMPLETE ===');
+        console.log('Status:', xhr.status);
+        console.log('Tokens received:', tokenCount);
+        console.log('Content length:', fullContent.length);
+        console.log('First 200 chars:', fullContent.substring(0, 200));
+
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve({ content: fullContent });
         } else {
+          console.log('GLM API Error Response:', xhr.responseText);
           resolve({ content: `GLM API Error: ${xhr.status}`, error: 'API Error' });
         }
       };
 
       xhr.onerror = () => {
+        console.log('GLM Network Error');
         resolve({ content: 'Network error connecting to GLM API', error: 'Network error' });
       };
 
@@ -535,14 +575,20 @@ class AIService {
       };
 
       const glmModel = modelMap[model] || model;
+      console.log('GLM API Model:', glmModel);
+      console.log('Request messages:', messages.length);
 
-      xhr.send(JSON.stringify({
+      const requestBody = {
         model: glmModel,
         messages: messages,
         stream: true,
         temperature: 0.7,
         max_tokens: 8000, // Increased to prevent cutoff
-      }));
+      };
+
+      console.log('GLM Request body:', JSON.stringify(requestBody, null, 2));
+
+      xhr.send(JSON.stringify(requestBody));
     });
   }
 

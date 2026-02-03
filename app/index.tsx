@@ -444,6 +444,13 @@ export default function ChatScreen() {
     const userInput = inputText.trim();
     if (userInput === '' || !currentChat || isTyping) return;
 
+    console.log('=== USER SEND MESSAGE ===');
+    console.log('User Input:', userInput);
+    console.log('Selected Model:', selectedModel);
+    console.log('Attached Files:', attachedFiles.length);
+    console.log('Attached Images:', attachedImages.length);
+    console.log('Chat Messages:', currentChat.messages.length);
+
     const fileAttachments: FileAttachment[] = attachedFiles.map((file) => ({
       type: 'file',
       name: file.name,
@@ -615,9 +622,14 @@ export default function ChatScreen() {
       historyMessages
     );
 
-    console.log('Agent result:', result);
-    console.log('Agent plan:', result.plan);
+    console.log('=== AGENT EXECUTION COMPLETE ===');
+    console.log('Success:', result.success);
+    console.log('Steps completed:', result.stepsCompleted);
+    console.log('Steps failed:', result.stepsFailed);
+    console.log('Final output length:', result.finalOutput?.length || 0);
+    console.log('Final output preview:', result.finalOutput?.substring(0, 300) || 'No output');
     console.log('Has conversational response:', !!result.plan?.conversationalResponse);
+    console.log('Has tool steps:', result.plan?.steps?.length || 0);
 
     // Clear agent steps after completion
     setAgentSteps([]);
@@ -630,6 +642,7 @@ export default function ChatScreen() {
     // Ensure we have at least one response if nothing was streamed (fallback)
     if (!streamingMessageIdRef.current && !result.plan?.steps.length) {
        const finalContent = result.plan?.conversationalResponse || result.finalOutput || 'Done!';
+       console.log('Creating fallback message, content length:', finalContent.length);
        const summaryMsg: Message = {
         id: `summary-${Date.now()}`,
         role: 'assistant',
@@ -646,6 +659,7 @@ export default function ChatScreen() {
       });
     }
 
+    console.log('=== SEND MESSAGE COMPLETE ===');
     setIsTyping(false);
   };
 
