@@ -896,8 +896,9 @@ export default function ChatScreen() {
       </ScrollView>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top}
+        style={{ flex: 0 }}
       >
         <View style={[styles.bottomBar, { paddingBottom: 12 + insets.bottom }]}>
           {(attachedFiles.length > 0 || attachedImages.length > 0) && (
@@ -946,6 +947,10 @@ export default function ChatScreen() {
               multiline
               maxLength={4000}
               textAlignVertical="top"
+              autoCapitalize="sentences"
+              autoCorrect
+              enablesReturnKeyAutomatically
+              keyboardAppearance={isDarkMode ? 'dark' : 'light'}
             />
 
             {/* Right side actions */}

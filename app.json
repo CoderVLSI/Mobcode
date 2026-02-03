@@ -29,7 +29,8 @@
         "INTERNET",
         "ACCESS_NETWORK_STATE"
       ],
-      "package": "com.indiccoder.cursorchat"
+      "package": "com.indiccoder.cursorchat",
+      "windowSoftInputMode": "adjustResize"
     },
     "web": {
       "bundler": "metro"

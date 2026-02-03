@@ -9,6 +9,8 @@ export interface AgentStep {
   status: 'pending' | 'approved' | 'executing' | 'completed' | 'failed';
   result?: ToolResult;
   error?: string;
+  dependencies?: string[]; // IDs of steps this step depends on
+  canParallel?: boolean; // Can this step run in parallel with others?
 }
 
 export interface ExecutionPlan {
@@ -76,9 +78,11 @@ class AutonomousAgent {
 
     let completed = 0, failed = 0;
 
-    console.log('=== EXECUTING STEPS ===');
-    for (const step of plan.steps) {
-      console.log('--- Step:', step.description);
+    console.log('=== EXECUTING STEPS (PARALLEL MODE) ===');
+
+    // Group steps by dependencies for parallel execution
+    const executeStep = async (step: AgentStep): Promise<void> => {
+      console.log('--- Executing Step:', step.description);
       console.log('Tool:', step.tool);
       console.log('Needs approval:', plan.requiresApproval.includes(step.id));
 
@@ -91,7 +95,7 @@ class AutonomousAgent {
           failed++;
           onProgress(step, plan.steps);
           console.log('Step denied by user');
-          continue;
+          return;
         }
       }
 
@@ -117,6 +121,17 @@ class AutonomousAgent {
 
       console.log('Step status:', step.status);
       onProgress(step, plan.steps);
+    };
+
+    // Execute steps in parallel batches
+    const BATCH_SIZE = 5; // Execute up to 5 steps at once
+    for (let i = 0; i < plan.steps.length; i += BATCH_SIZE) {
+      const batch = plan.steps.slice(i, i + BATCH_SIZE);
+      console.log(`\n=== BATCH ${Math.floor(i / BATCH_SIZE) + 1} ===`);
+      console.log(`Executing ${batch.length} steps in parallel...`);
+
+      // Execute batch in parallel
+      await Promise.all(batch.map(step => executeStep(step)));
     }
 
     console.log('=== ALL STEPS COMPLETE ===');
@@ -260,12 +275,26 @@ class AutonomousAgent {
 ## Available Tools:
 ${toolsDesc}
 
+## IMPORTANT: Project Structure Rules
+
+**ALWAYS create new projects in separate folders:**
+- Use a descriptive folder name for the project
+- Create all project files inside this folder
+- Example: For "make a chat app", create folder "chat-app/" and put all files inside
+
+**Multi-file creation for speed:**
+- Create multiple files in parallel when possible
+- Group related files together in your plan
+- No file depends on another if they can be created simultaneously
+
 ## Rules for Creating Plans (only when tools are needed):
 
-1. **Break tasks into 3-7 clear steps**
-2. **Be specific with parameters** - use real file paths
-3. **Mark approval correctly**: write_file, create_file, delete_file, run_command, append_file, update_package_json, init_project, git_init, git_commit, git_set_remote, git_clone, git_pull, git_push need approval; read_file, list_directory, search_files don't
-4. **Consider file operations order** - read before writing, check before creating
+1. **Break tasks into 3-10 clear steps** (more steps are OK for multi-file projects)
+2. **Always use new folders** - never pollute the root directory
+3. **Multi-file operations** - create multiple files at once when independent
+4. **Be specific with parameters** - use real file paths with the project folder
+5. **Mark approval correctly**: write_file, create_file, delete_file, run_command, append_file, update_package_json, init_project, git_init, git_commit, git_set_remote, git_clone, git_pull, git_push need approval; read_file, list_directory, search_files don't
+6. **Consider file operations order** - read before writing, check before creating
 
 ## Response Format:
 
@@ -285,7 +314,7 @@ For **tasks** - Respond ONLY with valid JSON:
   ]
 }
 
-Be friendly and helpful! If someone just wants to chat, have a normal conversation. Only use tools when they ask you to DO something with files/code.`,
+Be friendly and helpful! If someone just wants to chat, have a normal conversation. Only use tools when they ask you to DO something with files/code. Always create projects in dedicated folders!`,
       },
       ...sanitizedHistory,
       {
