@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Cursor Chat",
+    "slug": "cursor-chat",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "backgroundColor": "#1e1e1e"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
