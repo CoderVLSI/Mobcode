@@ -5,6 +5,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -13,11 +14,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme, Theme } from '../context/ThemeContext';
-import { storage, Chat, Message, CodeDiff, CustomModel } from '../utils/storage';
+import { storage, Chat, Message, CodeDiff, CustomModel, MessageAttachment, ImageAttachment, FileAttachment } from '../utils/storage';
 import { aiService } from '../utils/aiService';
 import { codeParser } from '../utils/codeParser';
-import { fileManager } from '../utils/fileManager';
+import { fileManager, FileNode } from '../utils/fileManager';
 import { autonomousAgent, AgentStep } from '../utils/autonomousAgent';
 import { ModelSwitcher } from '../components/ModelSwitcher';
 import { ChatHistory } from '../components/ChatHistory';
@@ -26,8 +28,19 @@ import { FileExplorer } from '../components/FileExplorer';
 import { FileSearch } from '../components/FileSearch';
 import { FileOperationApproval, FileOperation } from '../components/FileOperationApproval';
 import { MCPManager } from '../components/MCPManager';
-import { AgentApproval } from '../components/AgentApproval';
 import { TaskTracker } from '../components/TaskTracker';
+import { GitPanel } from '../components/GitPanel';
+import { FileAttachmentPicker } from '../components/FileAttachmentPicker';
+import { MessageContent } from '../components/MessageContent';
+import { ToolsHelp } from '../components/ToolsHelp';
+import { AI_MODELS } from '../constants/Models';
+import {
+  LOCAL_MODEL_ID,
+  LOCAL_MODEL_NAME,
+  ensureLocalModelReady,
+  deleteLocalModel,
+  getLocalModelInfo,
+} from '../utils/localLlama';
 
 export default function ChatScreen() {
   const { theme, isDarkMode, toggleTheme } = useTheme();
@@ -50,16 +63,26 @@ export default function ChatScreen() {
   const [newModelApiKey, setNewModelApiKey] = useState('');
   const [openAIKey, setOpenAIKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
+  const [geminiKey, setGeminiKey] = useState('');
   const [showOpenAIInput, setShowOpenAIInput] = useState(false);
   const [showFileSearch, setShowFileSearch] = useState(false);
   const [pendingFileOperations, setPendingFileOperations] = useState<FileOperation[]>([]);
   const [showFileApproval, setShowFileApproval] = useState(false);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [showMCPManager, setShowMCPManager] = useState(false);
-  const [showAgentApproval, setShowAgentApproval] = useState(false);
-  const [pendingApprovalStep, setPendingApprovalStep] = useState<AgentStep | null>(null);
   const [showTaskTracker, setShowTaskTracker] = useState(false);
+  const [showGitPanel, setShowGitPanel] = useState(false);
+  const [showToolsHelp, setShowToolsHelp] = useState(false);
   const [currentGoal, setCurrentGoal] = useState('');
+  const [showAttachmentPicker, setShowAttachmentPicker] = useState(false);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<FileNode[]>([]);
+  const [localModelStatus, setLocalModelStatus] = useState<'unknown' | 'missing' | 'downloading' | 'ready' | 'error'>('unknown');
+  const [localModelProgress, setLocalModelProgress] = useState(0);
+  const [localModelSize, setLocalModelSize] = useState<number | null>(null);
+  const [localModelError, setLocalModelError] = useState<string | null>(null);
+  const [showLocalModelModal, setShowLocalModelModal] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const approvalResolverRef = useRef<((value: boolean) => void) | null>(null);
   const messageCounterRef = useRef(0);
@@ -73,6 +96,72 @@ export default function ChatScreen() {
       saveCurrentChat();
     }
   }, [currentChat]);
+
+  const formatBytes = (bytes: number) => {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    const value = bytes / Math.pow(1024, index);
+    return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
+  };
+
+  const refreshLocalModelInfo = async () => {
+    try {
+      const info = await getLocalModelInfo();
+      setLocalModelSize(info.exists ? info.size : null);
+      setLocalModelStatus(info.exists ? 'ready' : 'missing');
+      setLocalModelError(null);
+    } catch (error) {
+      setLocalModelStatus('error');
+      setLocalModelError((error as Error).message);
+    }
+  };
+
+  const startLocalModelDownload = async () => {
+    setLocalModelProgress(0);
+    setLocalModelStatus('downloading');
+    setLocalModelError(null);
+    setShowLocalModelModal(true);
+
+    try {
+      await ensureLocalModelReady((progress) => setLocalModelProgress(progress));
+      await refreshLocalModelInfo();
+    } catch (error) {
+      setLocalModelStatus('error');
+      setLocalModelError((error as Error).message);
+      throw error;
+    } finally {
+      setShowLocalModelModal(false);
+    }
+  };
+
+  const handleDeleteLocalModel = async () => {
+    Alert.alert(
+      'Delete Local Model',
+      'This will remove the offline model from your device. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteLocalModel();
+            await refreshLocalModelInfo();
+          },
+        },
+      ]
+    );
+  };
+
+  const ensureLocalModelReadyWithUI = async () => {
+    const info = await getLocalModelInfo();
+    if (info.exists) {
+      setLocalModelStatus('ready');
+      setLocalModelSize(info.size);
+      return;
+    }
+    await startLocalModelDownload();
+  };
 
   const loadInitialData = async () => {
     const savedModel = await storage.getModel();
@@ -106,6 +195,31 @@ export default function ChatScreen() {
     setOpenAIKey(openaiKey);
     const anthropicKey = await storage.getAnthropicKey();
     setAnthropicKey(anthropicKey);
+    const geminiKey = await storage.getGeminiKey();
+    setGeminiKey(geminiKey);
+
+    await refreshLocalModelInfo();
+    await ensureSampleWebsite();
+  };
+
+  const ensureSampleWebsite = async () => {
+    try {
+      const root = fileManager.getProjectRoot();
+      const sampleDir = `${root}/sample`;
+      const htmlPath = `${sampleDir}/index.html`;
+      const cssPath = `${sampleDir}/styles.css`;
+      const jsPath = `${sampleDir}/app.js`;
+
+      const exists = await fileManager.fileExists(htmlPath);
+      if (exists) return;
+
+      await fileManager.createFolder(sampleDir);
+      await fileManager.writeFile(cssPath, SAMPLE_CSS);
+      await fileManager.writeFile(jsPath, SAMPLE_JS);
+      await fileManager.writeFile(htmlPath, SAMPLE_HTML);
+    } catch (error) {
+      // Ignore sample creation failures
+    }
   };
 
   const createNewChat = () => {
@@ -153,6 +267,12 @@ export default function ChatScreen() {
     if (currentChat) {
       setCurrentChat({ ...currentChat, model });
     }
+    if (model === LOCAL_MODEL_ID) {
+      const info = await getLocalModelInfo();
+      if (!info.exists) {
+        await startLocalModelDownload();
+      }
+    }
   };
 
   useEffect(() => {
@@ -182,14 +302,139 @@ export default function ChatScreen() {
 
   const streamingMessageIdRef = useRef<string | null>(null);
 
+  const handleAddAttachments = (files: FileNode[]) => {
+    if (!files.length) return;
+    setAttachedFiles((prev) => {
+      const existing = new Set(prev.map((f) => f.path));
+      const next = [...prev];
+      for (const file of files) {
+        if (!existing.has(file.path)) {
+          next.push(file);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleAddImages = (images: ImageAttachment[]) => {
+    if (!images.length) return;
+    setAttachedImages((prev) => {
+      const existing = new Set(prev.map((img) => img.uri));
+      const next = [...prev];
+      for (const image of images) {
+        if (!existing.has(image.uri)) {
+          next.push(image);
+        }
+      }
+      return next;
+    });
+  };
+
+  const removeAttachment = (path: string) => {
+    setAttachedFiles((prev) => prev.filter((file) => file.path !== path));
+  };
+
+  const removeImageAttachment = (uri: string) => {
+    setAttachedImages((prev) => prev.filter((image) => image.uri !== uri));
+  };
+
+  const buildAttachmentContext = async () => {
+    if (attachedFiles.length === 0 && attachedImages.length === 0) return '';
+    const maxFileChars = 2000;
+    const maxTotalChars = 8000;
+    let totalChars = 0;
+    const blocks: string[] = [];
+
+    for (const file of attachedFiles) {
+      try {
+        let content = await fileManager.readFile(file.path);
+        let truncated = false;
+
+        if (content.length > maxFileChars) {
+          content = content.slice(0, maxFileChars);
+          truncated = true;
+        }
+
+        if (totalChars + content.length > maxTotalChars) {
+          const remaining = maxTotalChars - totalChars;
+          if (remaining <= 0) {
+            blocks.push(`### ${file.name}\n[omitted: context limit reached]`);
+            continue;
+          }
+          content = content.slice(0, remaining);
+          truncated = true;
+        }
+
+        totalChars += content.length;
+        blocks.push(`### ${file.name}\n${content}${truncated ? '\n... (truncated)' : ''}`);
+      } catch (error) {
+        blocks.push(`### ${file.name}\n[failed to read file]`);
+      }
+    }
+
+    if (attachedImages.length > 0) {
+      const imageLines = attachedImages.map((img) => {
+        const name = img.name || img.uri.split('/').pop() || 'image';
+        const size = img.size ? `, ${Math.round(img.size / 1024)} KB` : '';
+        const dims = img.width && img.height ? `, ${img.width}x${img.height}` : '';
+        return `- ${name}${dims}${size}`;
+      });
+      blocks.push(`Attached images:\n${imageLines.join('\n')}`);
+    }
+
+    return `Attached context:\n${blocks.join('\n\n')}\n\n`;
+  };
+
+  const pickImages = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission Required', 'Please allow photo access to attach images.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+
+    if (result.canceled) return;
+
+    const images: ImageAttachment[] = result.assets.map((asset) => ({
+      type: 'image',
+      uri: asset.uri,
+      name: asset.fileName || asset.uri.split('/').pop() || 'image',
+      size: asset.fileSize,
+      width: asset.width,
+      height: asset.height,
+      mimeType: asset.mimeType,
+    }));
+
+    handleAddImages(images);
+  };
+
   const sendMessage = async () => {
-    if (inputText.trim() === '' || !currentChat || isTyping) return;
+    const userInput = inputText.trim();
+    if (userInput === '' || !currentChat || isTyping) return;
+
+    const fileAttachments: FileAttachment[] = attachedFiles.map((file) => ({
+      type: 'file',
+      name: file.name,
+      path: file.path,
+      size: file.size,
+    }));
+    const imageAttachments: ImageAttachment[] = attachedImages.map((image) => ({
+      ...image,
+      type: 'image',
+    }));
+    const attachments: MessageAttachment[] = [...fileAttachments, ...imageAttachments];
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: inputText.trim(),
+      content: userInput,
       timestamp: new Date(),
+      attachments: attachments.length > 0 ? attachments : undefined,
     };
 
     const updatedMessages = [...currentChat.messages, userMessage];
@@ -204,16 +449,24 @@ export default function ChatScreen() {
     setInputText('');
     setIsTyping(true);
     streamingMessageIdRef.current = null;
+    const attachmentContext = await buildAttachmentContext();
+    const agentInput = attachmentContext ? `${attachmentContext}User request:\n${userInput}` : userInput;
+    setAttachedFiles([]);
+    setAttachedImages([]);
 
     // Always use autonomous agent - AI decides when to use tools
     setAgentSteps([]);
 
     // Determine which API key to use based on the selected model
     let apiKey: string | undefined;
+    let hfApiKey: string | undefined;
+    let geminiApiKey: string | undefined;
     if (selectedModel.startsWith('gpt')) {
       apiKey = openAIKey || undefined;
     } else if (selectedModel.startsWith('claude') || selectedModel.startsWith('anthropic')) {
       apiKey = anthropicKey || undefined;
+    } else if (selectedModel.startsWith('gemini')) {
+      geminiApiKey = geminiKey || undefined;
     }
 
     const handleStream = (token: string) => {
@@ -257,12 +510,23 @@ export default function ChatScreen() {
       });
     };
 
+    if (selectedModel === LOCAL_MODEL_ID) {
+      try {
+        await ensureLocalModelReadyWithUI();
+      } catch (error) {
+        setIsTyping(false);
+        Alert.alert('Local Model Error', (error as Error).message || 'Failed to prepare local model.');
+        return;
+      }
+    }
+
     const result = await autonomousAgent.executeTask(
-      inputText.trim(),
+      agentInput,
       [
         'read_file', 'write_file', 'create_file', 'delete_file', 'list_directory', 'search_files', 'run_command',
         'find_files', 'append_file', 'file_info', 'count_lines', 'list_imports',
-        'create_component', 'npm_info', 'update_package_json', 'init_project'
+        'create_component', 'npm_info', 'npm_install', 'update_package_json', 'init_project',
+        'git_init', 'git_status', 'git_add', 'git_commit', 'git_log', 'git_set_remote', 'git_clone', 'git_pull', 'git_push'
       ],
       async (step, allSteps) => {
         // Progress callback - update task tracker
@@ -273,16 +537,38 @@ export default function ChatScreen() {
         // Progress is shown in the task tracker badge instead
       },
       async (step) => {
-        // Approval callback - show custom modal
+        // Approval callback - show inline approval card in chat
         return new Promise((resolve) => {
           approvalResolverRef.current = resolve;
-          setPendingApprovalStep(step);
-          setShowAgentApproval(true);
+          const approvalMessageId = `approval-${Date.now()}`;
+          const approvalMessage: Message = {
+            id: approvalMessageId,
+            role: 'assistant',
+            content: `Approval required: ${step.tool}`,
+            timestamp: new Date(),
+            approval: {
+              id: step.id,
+              description: step.description,
+              tool: step.tool,
+              parameters: step.parameters,
+              status: 'pending',
+            },
+          };
+          setCurrentChat((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              messages: [...prev.messages, approvalMessage],
+              updatedAt: new Date(),
+            };
+          });
         });
       },
       selectedModel,
       customModels,
       apiKey,
+      hfApiKey,
+      geminiApiKey,
       handleStream // Pass the streaming callback
     );
 
@@ -332,13 +618,23 @@ export default function ChatScreen() {
     ]);
   };
 
-  const handleAgentApproval = (approved: boolean) => {
-    setShowAgentApproval(false);
+  const handleInlineApproval = (messageId: string, approved: boolean) => {
+    setCurrentChat((prev) => {
+      if (!prev) return null;
+      const messages = prev.messages.map((message) => {
+        if (message.id !== messageId || !message.approval) return message;
+        return {
+          ...message,
+          approval: { ...message.approval, status: approved ? 'approved' : 'denied' },
+        };
+      });
+      return { ...prev, messages, updatedAt: new Date() };
+    });
+
     if (approvalResolverRef.current) {
       approvalResolverRef.current(approved);
       approvalResolverRef.current = null;
     }
-    setPendingApprovalStep(null);
   };
 
   const handleAddCustomModel = async () => {
@@ -479,8 +775,19 @@ export default function ChatScreen() {
         </View>
 
         <View style={styles.headerRight}>
-          <TouchableOpacity onPress={() => setShowFileSearch(true)} style={styles.headerButton}>
-            <Ionicons name="search" size={24} color={theme.text} />
+          <TouchableOpacity onPress={() => setShowToolsHelp(true)} style={styles.headerButton}>
+            <Ionicons name="help-circle-outline" size={24} color={theme.accent} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowTaskTracker(true)} style={styles.headerButton}>
+            <Ionicons name="list-outline" size={24} color={agentSteps.length > 0 ? theme.accent : theme.text} />
+            {agentSteps.length > 0 && (
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>{agentSteps.filter(s => s.status !== 'completed').length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowGitPanel(true)} style={styles.headerButton}>
+            <Ionicons name="logo-github" size={24} color={theme.text} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowHistory(true)} style={styles.headerButton}>
             <Ionicons name="time-outline" size={24} color={theme.text} />
@@ -501,7 +808,12 @@ export default function ChatScreen() {
       >
         {currentChat?.messages.map((message) => (
           <View key={message.id}>
-            <MessageBubble message={message} styles={styles} theme={theme} />
+            <MessageBubble
+              message={message}
+              styles={styles}
+              theme={theme}
+              onApprovalAction={handleInlineApproval}
+            />
             {message.codeDiff && showDiffs[message.id] && (
               <CodeDiffViewer
                 diff={message.codeDiff}
@@ -527,50 +839,124 @@ export default function ChatScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
-        <View style={[styles.bottomBar, { paddingBottom: 24 }]}>
-          <View style={styles.inputContainer}>
+        <View style={styles.bottomBar}>
+          {(attachedFiles.length > 0 || attachedImages.length > 0) && (
+            <ScrollView horizontal style={styles.attachmentsScroll} contentContainerStyle={styles.attachmentsScrollContent}>
+              {attachedFiles.map((file) => (
+                <View key={file.path} style={styles.attachmentPill}>
+                  <Ionicons name="document-text-outline" size={11} color={theme.textSecondary} />
+                  <Text style={styles.attachmentText} numberOfLines={1}>{file.name}</Text>
+                  <TouchableOpacity onPress={() => removeAttachment(file.path)} style={styles.attachmentRemove}>
+                    <Ionicons name="close" size={11} color={theme.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {attachedImages.map((image) => (
+                <View key={image.uri} style={styles.attachmentImageWrapper}>
+                  <Image source={{ uri: image.uri }} style={styles.attachmentImage} />
+                  <TouchableOpacity onPress={() => removeImageAttachment(image.uri)} style={styles.attachmentImageRemove}>
+                    <Ionicons name="close" size={10} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          <View style={styles.inputRow}>
+            {/* Compact model selector button */}
+            <TouchableOpacity onPress={() => setShowModelPicker(true)} style={styles.modelIconButton}>
+              <Ionicons name="sparkles" size={16} color={theme.accent} />
+            </TouchableOpacity>
+
+            {/* Attachment buttons */}
+            <TouchableOpacity onPress={() => setShowAttachmentPicker(true)} style={styles.iconButtonSmall}>
+              <Ionicons name="attach" size={18} color={theme.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={pickImages} style={styles.iconButtonSmall}>
+              <Ionicons name="image-outline" size={18} color={theme.textSecondary} />
+            </TouchableOpacity>
+
+            {/* Text input */}
             <TextInput
-              style={styles.input}
+              style={styles.compactInput}
               value={inputText}
               onChangeText={setInputText}
-              placeholder="Ask anything (⌘K)"
+              placeholder="Ask anything..."
               placeholderTextColor={theme.placeholder}
               multiline
               maxLength={4000}
+              textAlignVertical="top"
             />
-            
-            <View style={[styles.modelRow, { marginBottom: 0, marginTop: 8 }]}>
-              <ModelSwitcher currentModel={selectedModel} onModelChange={handleModelChange} customModels={customModels} />
-              
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <TouchableOpacity onPress={() => setShowTaskTracker(true)} style={styles.taskTrackerButton}>
-                  <Ionicons name="list-outline" size={18} color={theme.textSecondary} />
-                  {agentSteps.length > 0 && (
-                    <View style={styles.taskBadge}>
-                      <Text style={styles.taskBadgeText}>{agentSteps.filter(s => s.status !== 'completed').length}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-                
-                <TouchableOpacity onPress={clearChat} style={styles.clearButton}>
-                  <Ionicons name="refresh-outline" size={18} color={theme.textSecondary} />
-                </TouchableOpacity>
 
-                <TouchableOpacity
-                  onPress={sendMessage}
-                  style={[styles.sendButton, inputText.trim() === '' && styles.sendButtonDisabled]}
-                  disabled={inputText.trim() === ''}
-                >
-                  <Ionicons
-                    name="arrow-up"
-                    size={16}
-                    color="#fff"
-                  />
-                </TouchableOpacity>
-              </View>
+            {/* Right side actions */}
+            <View style={styles.inputActions}>
+              {/* Send button */}
+              <TouchableOpacity
+                onPress={sendMessage}
+                style={[styles.sendButtonCompact, inputText.trim() === '' && styles.sendButtonDisabled]}
+                disabled={inputText.trim() === ''}
+              >
+                <Ionicons name="arrow-up" size={18} color={inputText.trim() ? '#fff' : theme.textSecondary} />
+              </TouchableOpacity>
             </View>
           </View>
         </View>
+
+        {/* Compact model picker modal */}
+        <Modal visible={showModelPicker} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowModelPicker(false)} />
+            <View style={styles.compactPickerContent}>
+              <Text style={styles.pickerTitle}>Select Model</Text>
+              <ScrollView style={styles.pickerList}>
+                {AI_MODELS.map((model) => (
+                  <TouchableOpacity
+                    key={model.id}
+                    style={[styles.pickerOption, selectedModel === model.id && styles.pickerOptionSelected]}
+                    onPress={() => { handleModelChange(model.id); setShowModelPicker(false); }}
+                  >
+                    <Ionicons name={model.icon as any} size={18} color={selectedModel === model.id ? theme.accent : theme.text} />
+                    <View style={styles.pickerOptionText}>
+                      <Text style={[styles.pickerName, selectedModel === model.id && { color: theme.accent }]}>{model.name}</Text>
+                      <Text style={styles.pickerDesc}>{model.description}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                {customModels.map((model) => (
+                  <TouchableOpacity
+                    key={model.id}
+                    style={[styles.pickerOption, selectedModel === model.id && styles.pickerOptionSelected]}
+                    onPress={() => { handleModelChange(model.id); setShowModelPicker(false); }}
+                  >
+                    <Ionicons name="key" size={18} color={selectedModel === model.id ? theme.accent : theme.text} />
+                    <View style={styles.pickerOptionText}>
+                      <Text style={[styles.pickerName, selectedModel === model.id && { color: theme.accent }]}>{model.name}</Text>
+                      <Text style={styles.pickerDesc}>Custom model</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal visible={showLocalModelModal} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.downloadModalContent}>
+              <Text style={styles.modalTitle}>Downloading Local Model</Text>
+              <Text style={styles.settingValue}>This is a one-time download and may take a few minutes.</Text>
+              <View style={styles.progressBar}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${Math.round(localModelProgress * 100)}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.progressLabel}>{Math.round(localModelProgress * 100)}%</Text>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
 
       <ChatHistory
@@ -596,6 +982,15 @@ export default function ChatScreen() {
         }}
       />
 
+      <FileAttachmentPicker
+        visible={showAttachmentPicker}
+        onClose={() => setShowAttachmentPicker(false)}
+        onConfirm={(files) => {
+          handleAddAttachments(files);
+          setShowAttachmentPicker(false);
+        }}
+      />
+
       <FileOperationApproval
         visible={showFileApproval}
         operations={pendingFileOperations}
@@ -608,18 +1003,21 @@ export default function ChatScreen() {
         onClose={() => setShowMCPManager(false)}
       />
 
-      <AgentApproval
-        visible={showAgentApproval}
-        step={pendingApprovalStep}
-        onApprove={() => handleAgentApproval(true)}
-        onDeny={() => handleAgentApproval(false)}
-      />
-
       <TaskTracker
         visible={showTaskTracker}
         onClose={() => setShowTaskTracker(false)}
         steps={agentSteps}
         goal={currentGoal || 'No active task'}
+      />
+
+      <GitPanel
+        visible={showGitPanel}
+        onClose={() => setShowGitPanel(false)}
+      />
+
+      <ToolsHelp
+        visible={showToolsHelp}
+        onClose={() => setShowToolsHelp(false)}
       />
 
       <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
@@ -729,6 +1127,95 @@ export default function ChatScreen() {
                   >
                     <Text style={styles.saveButtonText}>Save</Text>
                   </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.settingSection}>
+                <Text style={styles.sectionTitle}>Google Gemini API</Text>
+                <View style={styles.settingItem}>
+                  <Ionicons name="key" size={20} color={theme.accent} />
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingLabel}>Gemini API Key</Text>
+                    <Text style={styles.settingValue}>
+                      {geminiKey ? '••••' + geminiKey.slice(-4) : 'Not set'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.apiInputContainer}>
+                  <TextInput
+                    style={styles.apiInput}
+                    value={geminiKey}
+                    onChangeText={setGeminiKey}
+                    placeholder="AIza..."
+                    placeholderTextColor={theme.placeholder}
+                    secureTextEntry
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={styles.saveButton}
+                    onPress={async () => {
+                      await storage.setGeminiKey(geminiKey);
+                      Alert.alert('Success', 'Gemini API key saved');
+                    }}
+                  >
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.settingSection}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Local Model</Text>
+                </View>
+                <View style={styles.settingItem}>
+                  <Ionicons name="phone-portrait" size={20} color={theme.accent} />
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingLabel}>{LOCAL_MODEL_NAME}</Text>
+                    <Text style={styles.settingValue}>
+                      {localModelStatus === 'ready'
+                        ? `Downloaded${localModelSize ? ` • ${formatBytes(localModelSize)}` : ''}`
+                        : localModelStatus === 'downloading'
+                        ? `Downloading... ${Math.round(localModelProgress * 100)}%`
+                        : localModelStatus === 'error'
+                        ? `Error: ${localModelError || 'Unknown error'}`
+                        : 'Not downloaded'}
+                    </Text>
+                  </View>
+                  {localModelStatus === 'ready' && (
+                    <Ionicons name="checkmark-circle" size={20} color={theme.accent} />
+                  )}
+                </View>
+
+                {localModelStatus === 'downloading' && (
+                  <View style={styles.progressBar}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${Math.round(localModelProgress * 100)}%` },
+                      ]}
+                    />
+                  </View>
+                )}
+
+                <View style={[styles.formButtons, { marginTop: 10 }]}>
+                  {localModelStatus === 'ready' ? (
+                    <TouchableOpacity
+                      style={[styles.saveButton, styles.cancelButton]}
+                      onPress={handleDeleteLocalModel}
+                    >
+                      <Text style={styles.saveButtonText}>Delete Model</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.saveButton}
+                      onPress={startLocalModelDownload}
+                      disabled={localModelStatus === 'downloading'}
+                    >
+                      <Text style={styles.saveButtonText}>
+                        {localModelStatus === 'downloading' ? 'Downloading…' : 'Download Model'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
 
@@ -906,8 +1393,19 @@ export default function ChatScreen() {
   );
 }
 
-function MessageBubble({ message, styles, theme }: { message: Message; styles: any; theme: Theme }) {
+function MessageBubble({
+  message,
+  styles,
+  theme,
+  onApprovalAction,
+}: {
+  message: Message;
+  styles: any;
+  theme: Theme;
+  onApprovalAction: (messageId: string, approved: boolean) => void;
+}) {
   const isUser = message.role === 'user';
+  const isApproval = !!message.approval;
 
   return (
     <View style={styles.messageRow}>
@@ -919,10 +1417,152 @@ function MessageBubble({ message, styles, theme }: { message: Message; styles: a
         )}
       </View>
       <View style={styles.messageContentWrapper}>
-        <Text style={styles.senderName}>{isUser ? 'You' : 'Cursor'}</Text>
-        <Text style={styles.messageContent}>{message.content}</Text>
-        {/* Code rendering would go here - for now keeping text */}
+        <Text style={styles.senderName}>{isUser ? 'You' : 'Mobcode'}</Text>
+        {isApproval ? (
+          <ApprovalInlineCard
+            approval={message.approval!}
+            theme={theme}
+            styles={styles}
+            onApprove={() => onApprovalAction(message.id, true)}
+            onDeny={() => onApprovalAction(message.id, false)}
+          />
+        ) : (
+          <>
+            {isUser ? (
+              <Text style={styles.messageContent}>{message.content}</Text>
+            ) : (
+              <MessageContent content={message.content} theme={theme} styles={styles} />
+            )}
+            {message.attachments && message.attachments.length > 0 && (
+              <View style={styles.messageAttachments}>
+                {message.attachments
+                  .filter((att) => att.type === 'file')
+                  .map((att) => (
+                    <View key={(att as FileAttachment).path} style={styles.messageAttachmentPill}>
+                      <Ionicons name="document-text-outline" size={11} color={theme.textSecondary} />
+                      <Text style={styles.messageAttachmentText} numberOfLines={1}>
+                        {(att as FileAttachment).name}
+                      </Text>
+                    </View>
+                  ))}
+                {message.attachments
+                  .filter((att) => att.type === 'image')
+                  .map((att) => (
+                    <Image
+                      key={(att as ImageAttachment).uri}
+                      source={{ uri: (att as ImageAttachment).uri }}
+                      style={styles.messageAttachmentImage}
+                    />
+                  ))}
+              </View>
+            )}
+          </>
+        )}
       </View>
+    </View>
+  );
+}
+
+function ApprovalInlineCard({
+  approval,
+  theme,
+  styles,
+  onApprove,
+  onDeny,
+}: {
+  approval: NonNullable<Message['approval']>;
+  theme: Theme;
+  styles: any;
+  onApprove: () => void;
+  onDeny: () => void;
+}) {
+  const getToolIcon = (toolName: string) => {
+    if (toolName.includes('file')) return 'document-text';
+    if (toolName.includes('command') || toolName.includes('run')) return 'terminal';
+    if (toolName.includes('search')) return 'search';
+    if (toolName.includes('create') || toolName.includes('write')) return 'add-circle';
+    if (toolName.includes('delete') || toolName.includes('remove')) return 'trash';
+    if (toolName.includes('list') || toolName.includes('directory')) return 'folder';
+    if (toolName.includes('npm') || toolName.includes('package')) return 'cube';
+    if (toolName.startsWith('git_')) return 'logo-github';
+    return 'flash';
+  };
+
+  const getRiskLevel = (toolName: string) => {
+    const highRisk = ['write_file', 'delete_file', 'run_command', 'create_file', 'git_init', 'git_commit', 'git_set_remote', 'git_clone', 'git_pull', 'git_push'];
+    const mediumRisk = ['update_package_json', 'init_project', 'npm_install'];
+
+    if (highRisk.includes(toolName)) return { level: 'high', color: theme.error, icon: 'warning' };
+    if (mediumRisk.includes(toolName)) return { level: 'medium', color: theme.warning, icon: 'alert-circle' };
+    return { level: 'low', color: theme.success, icon: 'checkmark-circle' };
+  };
+
+  const risk = getRiskLevel(approval.tool);
+  const isPending = approval.status === 'pending';
+
+  return (
+    <View style={styles.approvalCard}>
+      <View style={styles.approvalHeader}>
+        <View style={styles.approvalHeaderLeft}>
+          <Ionicons name={getToolIcon(approval.tool)} size={16} color={theme.accent} />
+          <Text style={styles.approvalTitle}>Approval Required</Text>
+        </View>
+        <View style={[styles.approvalBadge, { backgroundColor: `${risk.color}15` }]}>
+          <Ionicons name={risk.icon} size={12} color={risk.color} />
+          <Text style={[styles.approvalBadgeText, { color: risk.color }]}>
+            {risk.level.toUpperCase()}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={styles.approvalDescription}>{approval.description}</Text>
+
+      <View style={styles.approvalToolRow}>
+        <Ionicons name="flash" size={12} color={theme.textSecondary} />
+        <Text style={styles.approvalToolText}>{approval.tool}</Text>
+      </View>
+
+      {approval.parameters && Object.keys(approval.parameters).length > 0 && (
+        <View style={styles.approvalParams}>
+          {Object.entries(approval.parameters).map(([key, value]) => (
+            <View key={key} style={styles.approvalParamRow}>
+              <Text style={styles.approvalParamKey}>{key}:</Text>
+              <Text style={styles.approvalParamValue} numberOfLines={3}>
+                {JSON.stringify(value)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {isPending ? (
+        <View style={styles.approvalActions}>
+          <TouchableOpacity style={styles.approvalDenyButton} onPress={onDeny}>
+            <Ionicons name="close-circle" size={16} color={theme.error} />
+            <Text style={styles.approvalDenyText}>Deny</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.approvalApproveButton} onPress={onApprove}>
+            <Ionicons name="checkmark-circle" size={16} color={theme.success} />
+            <Text style={styles.approvalApproveText}>Allow</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.approvalResult}>
+          <Ionicons
+            name={approval.status === 'approved' ? 'checkmark-circle' : 'close-circle'}
+            size={16}
+            color={approval.status === 'approved' ? theme.success : theme.error}
+          />
+          <Text
+            style={[
+              styles.approvalResultText,
+              { color: approval.status === 'approved' ? theme.success : theme.error },
+            ]}
+          >
+            {approval.status === 'approved' ? 'Approved' : 'Denied'}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -944,6 +1584,256 @@ function TypingIndicator({ styles, theme }: { styles: any; theme: Theme }) {
     </View>
   );
 }
+
+const SAMPLE_HTML = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mobcode Starter</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div class="badge">Sample Site</div>
+        <h1>Mobcode Starter</h1>
+        <p class="sub">
+          Edit <strong>index.html</strong>, <strong>styles.css</strong>, and
+          <strong>app.js</strong> to see changes instantly.
+        </p>
+        <div class="actions">
+          <button id="cta">Add a star</button>
+          <button id="themeToggle" class="ghost">Toggle accent</button>
+        </div>
+      </header>
+
+      <section class="grid">
+        <article class="card">
+          <h3>Clean HTML</h3>
+          <p>Structured sections with readable markup.</p>
+        </article>
+        <article class="card">
+          <h3>Modern CSS</h3>
+          <p>Gradient background, cards, and shadows.</p>
+        </article>
+        <article class="card">
+          <h3>Small JS</h3>
+          <p>One file powering tiny interactions.</p>
+        </article>
+      </section>
+
+      <section class="stats">
+        <div class="stat">
+          <span id="stars">0</span>
+          <label>Stars</label>
+        </div>
+        <div class="stat">
+          <span id="files">3</span>
+          <label>Files</label>
+        </div>
+        <div class="stat">
+          <span id="size">Small</span>
+          <label>Footprint</label>
+        </div>
+      </section>
+
+      <footer>
+        Generated on <span id="date">today</span>.
+      </footer>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
+`;
+
+const SAMPLE_CSS = `:root {
+  --bg: #0f1218;
+  --surface: #141a23;
+  --card: #1a2230;
+  --text: #f4f6fb;
+  --muted: #9fb0c7;
+  --accent: #ff6b3d;
+  --accent-soft: rgba(255, 107, 61, 0.18);
+  --ring: rgba(255, 255, 255, 0.06);
+  --shadow: 0 12px 30px rgba(8, 12, 20, 0.45);
+  --radius: 18px;
+}
+
+body.accent-alt {
+  --accent: #1f8cff;
+  --accent-soft: rgba(31, 140, 255, 0.2);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top, rgba(255, 107, 61, 0.2), transparent 40%),
+    radial-gradient(circle at 80% 20%, rgba(31, 140, 255, 0.16), transparent 45%),
+    var(--bg);
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 56px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.hero {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 32px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--ring);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 16px 0 8px;
+  font-size: clamp(28px, 4vw, 44px);
+}
+
+.sub {
+  margin: 0;
+  color: var(--muted);
+  max-width: 560px;
+  line-height: 1.6;
+}
+
+.actions {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+button {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.3);
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--ring);
+  box-shadow: none;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px;
+  border: 1px solid var(--ring);
+}
+
+.card h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+}
+
+.stat {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 18px;
+  border: 1px solid var(--ring);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat span {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.stat label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+footer {
+  color: var(--muted);
+  font-size: 12px;
+}
+`;
+
+const SAMPLE_JS = `const starsEl = document.getElementById('stars');
+const dateEl = document.getElementById('date');
+const button = document.getElementById('cta');
+const toggle = document.getElementById('themeToggle');
+
+let stars = Number(localStorage.getItem('stars') || 0);
+
+const updateStars = () => {
+  starsEl.textContent = String(stars);
+  localStorage.setItem('stars', String(stars));
+};
+
+updateStars();
+dateEl.textContent = new Date().toLocaleDateString();
+
+button.addEventListener('click', () => {
+  stars += 1;
+  updateStars();
+});
+
+toggle.addEventListener('click', () => {
+  document.body.classList.toggle('accent-alt');
+});
+`;
 
 const createStyles = (theme: Theme) => StyleSheet.create({
   container: {
@@ -978,18 +1868,283 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     fontWeight: '600',
     color: theme.text,
   },
+  headerBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: theme.accent,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
+  },
   bottomBar: {
-    padding: 16,
+    padding: 8,
+    paddingBottom: 12,
     backgroundColor: theme.background,
     borderTopWidth: 1,
     borderTopColor: theme.border,
   },
+  attachmentsScroll: {
+    maxHeight: 32,
+    marginBottom: 6,
+  },
+  attachmentsScrollContent: {
+    paddingHorizontal: 4,
+    gap: 6,
+  },
   modelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: 8,
     paddingHorizontal: 4,
+    gap: 8,
+  },
+  modelRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modelRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 'auto',
+  },
+  gitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  gitButtonText: {
+    fontSize: 12,
+    color: theme.text,
+    fontWeight: '500',
+  },
+  attachButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  attachButtonText: {
+    fontSize: 12,
+    color: theme.text,
+    fontWeight: '500',
+  },
+  attachmentsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 4,
+    marginTop: 6,
+  },
+  // New compact input styles
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    backgroundColor: theme.inputBackground,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  modelIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: `${theme.accent}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconButtonSmall: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactInput: {
+    flex: 1,
+    fontSize: 15,
+    color: theme.text,
+    maxHeight: 100,
+    minHeight: 32,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  inputActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  sendButtonCompact: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  taskBadgeSmall: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: theme.accent,
+    borderRadius: 8,
+    minWidth: 14,
+    height: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Model picker modal styles
+  compactPickerContent: {
+    backgroundColor: theme.surface,
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 320,
+    maxHeight: 400,
+  },
+  pickerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.text,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  pickerList: {
+    maxHeight: 350,
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+    gap: 12,
+    minHeight: 50,
+  },
+  pickerOptionSelected: {
+    backgroundColor: `${theme.accent}10`,
+  },
+  pickerOptionText: {
+    flex: 1,
+  },
+  pickerName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: theme.text,
+    marginBottom: 2,
+  },
+  pickerDesc: {
+    fontSize: 12,
+    color: theme.textSecondary,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  attachmentPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '100%',
+    backgroundColor: theme.surface,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  attachmentText: {
+    fontSize: 12,
+    color: theme.text,
+    maxWidth: 140,
+  },
+  attachmentRemove: {
+    padding: 2,
+  },
+  attachmentImageWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.border,
+    position: 'relative',
+  },
+  attachmentImage: {
+    width: '100%',
+    height: '100%',
+  },
+  attachmentImageRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageAttachments: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+  },
+  messageAttachmentPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.inputBackground,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  messageAttachmentText: {
+    fontSize: 11,
+    color: theme.textSecondary,
+    maxWidth: 180,
+  },
+  messageAttachmentImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.border,
   },
   clearButton: {
     padding: 4,
@@ -1046,6 +2201,126 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     color: theme.text,
+  },
+  approvalCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 12,
+    gap: 10,
+  },
+  approvalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  approvalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  approvalTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  approvalBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  approvalBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  approvalDescription: {
+    fontSize: 13,
+    color: theme.text,
+    lineHeight: 18,
+  },
+  approvalToolRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  approvalToolText: {
+    fontSize: 12,
+    color: theme.textSecondary,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  approvalParams: {
+    backgroundColor: theme.inputBackground,
+    borderRadius: 8,
+    padding: 10,
+    gap: 6,
+  },
+  approvalParamRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  approvalParamKey: {
+    fontSize: 12,
+    color: theme.accent,
+    minWidth: 80,
+  },
+  approvalParamValue: {
+    flex: 1,
+    fontSize: 12,
+    color: theme.text,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  approvalActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  approvalDenyButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: `${theme.error}40`,
+    backgroundColor: `${theme.error}15`,
+  },
+  approvalDenyText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.error,
+  },
+  approvalApproveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: `${theme.success}20`,
+    borderWidth: 1,
+    borderColor: `${theme.success}50`,
+  },
+  approvalApproveText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.success,
+  },
+  approvalResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  approvalResultText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   typingIndicator: {
     flexDirection: 'row',
@@ -1128,6 +2403,16 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.border,
   },
+  downloadModalContent: {
+    backgroundColor: theme.surface,
+    borderRadius: 12,
+    width: '100%',
+    maxWidth: 360,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: theme.border,
+    gap: 10,
+  },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1184,6 +2469,22 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   settingValue: {
     fontSize: 12,
     color: theme.textSecondary,
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: theme.border,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  progressFill: {
+    height: 6,
+    backgroundColor: theme.accent,
+  },
+  progressLabel: {
+    fontSize: 12,
+    color: theme.textSecondary,
+    textAlign: 'right',
   },
   switchContainer: {
     marginLeft: 8,

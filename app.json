@@ -8,11 +8,31 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "newArchEnabled": true,
+    "plugins": [
+      [
+        "llama.rn",
+        {
+          "forceCxx20": true,
+          "enableOpenCLAndHexagon": false
+        }
+      ]
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Allow access to photos to attach images in chat."
+      }
     },
     "android": {
-      "backgroundColor": "#1e1e1e"
+      "backgroundColor": "#1e1e1e",
+      "permissions": [
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE"
+      ],
+      "package": "com.indiccoder.cursorchat"
     },
     "web": {
       "bundler": "metro"

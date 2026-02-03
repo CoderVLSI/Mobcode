@@ -1,5 +1,6 @@
 import { fileManager } from './fileManager';
 import { mcpClient } from './mcpClient';
+import { gitService } from './gitService';
 
 export interface ToolParameter {
   name: string;
@@ -619,6 +620,341 @@ export function ${name}() {
       },
       requiresApproval: true,
     });
+
+    // Package installation (fetches from npm registry and adds to package.json)
+    this.register({
+      name: 'npm_install',
+      description: 'Install a package (fetches latest version and updates package.json)',
+      parameters: [
+        { name: 'package', type: 'string', description: 'Package name (e.g., "lodash" or "@types/react")', required: true },
+        { name: 'version', type: 'string', description: 'Specific version (default: latest)', required: false },
+        { name: 'type', type: 'string', description: '"dependencies" or "devDependencies"', required: false, default: 'dependencies' },
+      ],
+      execute: async (params) => {
+        try {
+          // First, get package info from npm registry
+          const response = await fetch(`https://registry.npmjs.org/${params.package}`);
+          if (!response.ok) {
+            return {
+              success: false,
+              output: '',
+              error: `Package "${params.package}" not found on npm registry`,
+            };
+          }
+          const data = await response.json();
+          const version = params.version || data['dist-tags']?.latest || 'latest';
+
+          // Update package.json
+          const packageJsonPath = `${fileManager.getProjectRoot()}/package.json`;
+          const packageJson = JSON.parse(await fileManager.readFile(packageJsonPath));
+
+          const depType = params.type === 'devDependencies' ? 'devDependencies' : 'dependencies';
+          packageJson[depType] = packageJson[depType] || {};
+          packageJson[depType][params.package] = version;
+
+          await fileManager.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+
+          // Get latest version info for display
+          const latestInfo = data.versions?.[version] || {};
+          const description = latestInfo.description || data.description || 'No description';
+
+          return {
+            success: true,
+            output: `✅ Installed ${params.package}@${version}\n\n${description}\n\n⚠️ Note: package.json updated. Run "npm install" in your local environment to install dependencies.`,
+            data: {
+              package: params.package,
+              version,
+              type: depType,
+              description,
+            },
+          };
+        } catch (error) {
+          return {
+            success: false,
+            output: '',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      requiresApproval: true,
+    });
+
+    // Git operations (real git via isomorphic-git)
+    this.register({
+      name: 'git_init',
+      description: 'Initialize a git repository in the project root',
+      parameters: [],
+      execute: async () => {
+        try {
+          await gitService.init();
+          return { success: true, output: 'Initialized git repository (main)' };
+        } catch (error) {
+          return {
+            success: false,
+            output: '',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      requiresApproval: true,
+    });
+
+    this.register({
+      name: 'git_status',
+      description: 'Show working tree status (real git)',
+      parameters: [],
+      execute: async () => {
+        try {
+          const summary = await gitService.status();
+          const sections: string[] = [];
+
+          if (summary.staged.length > 0) {
+            sections.push(
+              `Changes to be committed:\n${summary.staged.map((l) => `  ${l}`).join('\n')}`
+            );
+          }
+
+          if (summary.unstaged.length > 0) {
+            sections.push(
+              `Changes not staged for commit:\n${summary.unstaged.map((l) => `  ${l}`).join('\n')}`
+            );
+          }
+
+          if (summary.untracked.length > 0) {
+            sections.push(
+              `Untracked files:\n${summary.untracked.map((l) => `  ${l}`).join('\n')}`
+            );
+          }
+
+          if (sections.length === 0) {
+            sections.push('Nothing to commit, working tree clean');
+          }
+
+          return {
+            success: true,
+            output: `On branch ${summary.branch}\n\n${sections.join('\n\n')}`,
+            data: summary,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            output: '',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      requiresApproval: false,
+    });
+
+    this.register({
+      name: 'git_add',
+      description: 'Add files to staging area',
+      parameters: [
+        { name: 'files', type: 'array', description: 'File paths to add (or ["."] for all)', required: true },
+      ],
+      execute: async (params) => {
+        try {
+          const files = Array.isArray(params.files) ? params.files : [params.files];
+          await gitService.add(files);
+          const fileCount = files.length === 1 && files[0] === '.' ? 'all' : files.length;
+          return {
+            success: true,
+            output: `Staged ${fileCount === 'all' ? 'all files' : fileCount + ' file(s)'}`,
+            data: { files, count: fileCount },
+          };
+        } catch (error) {
+          return {
+            success: false,
+            output: '',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      requiresApproval: false,
+    });
+
+    this.register({
+      name: 'git_commit',
+      description: 'Create a commit with staged changes',
+      parameters: [
+        { name: 'message', type: 'string', description: 'Commit message', required: true },
+        { name: 'authorName', type: 'string', description: 'Author name', required: false },
+        { name: 'authorEmail', type: 'string', description: 'Author email', required: false },
+      ],
+      execute: async (params) => {
+        try {
+          const result = await gitService.commit(params.message, {
+            authorName: params.authorName,
+            authorEmail: params.authorEmail,
+          });
+          return {
+            success: true,
+            output: `[${result.oid.slice(0, 7)}] ${params.message}`,
+            data: result,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            output: '',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      requiresApproval: true,
+    });
+
+    this.register({
+      name: 'git_log',
+      description: 'Show commit history',
+      parameters: [
+        { name: 'limit', type: 'number', description: 'Number of commits to show (default: 10)', required: false },
+      ],
+      execute: async (params) => {
+        try {
+          const commits = await gitService.log(params.limit || 10);
+          const log = commits.map((c: any) =>
+            `[${c.oid.slice(0, 7)}] ${new Date(c.commit.author.timestamp * 1000).toLocaleDateString()} - ${c.commit.message}`
+          ).join('\n');
+          return {
+            success: true,
+            output: log || 'No commits yet',
+            data: { commits },
+          };
+        } catch (error) {
+          return {
+            success: false,
+            output: '',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      requiresApproval: false,
+    });
+
+    this.register({
+      name: 'git_set_remote',
+      description: 'Set or update a git remote',
+      parameters: [
+        { name: 'name', type: 'string', description: 'Remote name (default: origin)', required: false },
+        { name: 'url', type: 'string', description: 'Remote URL', required: true },
+      ],
+      execute: async (params) => {
+        try {
+          await gitService.setRemote(params.name || 'origin', params.url);
+          return {
+            success: true,
+            output: `Remote "${params.name || 'origin'}" set to ${params.url}`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            output: '',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      requiresApproval: true,
+    });
+
+    this.register({
+      name: 'git_clone',
+      description: 'Clone a remote repository into the project root',
+      parameters: [
+        { name: 'url', type: 'string', description: 'Repository URL', required: true },
+        { name: 'username', type: 'string', description: 'Username for auth', required: false },
+        { name: 'token', type: 'string', description: 'Access token or password', required: false },
+        { name: 'depth', type: 'number', description: 'Shallow clone depth', required: false },
+      ],
+      execute: async (params) => {
+        try {
+          await gitService.clone(params.url, {
+            username: params.username,
+            token: params.token,
+            depth: params.depth,
+          });
+          return {
+            success: true,
+            output: `Cloned ${params.url}`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            output: '',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      requiresApproval: true,
+    });
+
+    this.register({
+      name: 'git_pull',
+      description: 'Pull from remote repository',
+      parameters: [
+        { name: 'remote', type: 'string', description: 'Remote name (default: origin)', required: false },
+        { name: 'ref', type: 'string', description: 'Branch name (default: current)', required: false },
+        { name: 'username', type: 'string', description: 'Username for auth', required: false },
+        { name: 'token', type: 'string', description: 'Access token or password', required: false },
+        { name: 'authorName', type: 'string', description: 'Merge author name', required: false },
+        { name: 'authorEmail', type: 'string', description: 'Merge author email', required: false },
+      ],
+      execute: async (params) => {
+        try {
+          await gitService.pull({
+            remote: params.remote,
+            ref: params.ref,
+            username: params.username,
+            token: params.token,
+            authorName: params.authorName,
+            authorEmail: params.authorEmail,
+          });
+          return {
+            success: true,
+            output: `Pulled from ${params.remote || 'origin'}`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            output: '',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      requiresApproval: true,
+    });
+
+    this.register({
+      name: 'git_push',
+      description: 'Push to remote repository',
+      parameters: [
+        { name: 'remote', type: 'string', description: 'Remote name (default: origin)', required: false },
+        { name: 'ref', type: 'string', description: 'Branch name (default: current)', required: false },
+        { name: 'username', type: 'string', description: 'Username for auth', required: false },
+        { name: 'token', type: 'string', description: 'Access token or password', required: false },
+      ],
+      execute: async (params) => {
+        try {
+          await gitService.push({
+            remote: params.remote,
+            ref: params.ref,
+            username: params.username,
+            token: params.token,
+          });
+          return {
+            success: true,
+            output: `Pushed to ${params.remote || 'origin'}`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            output: '',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      requiresApproval: true,
+    });
+
 
     this.register({
       name: 'init_project',

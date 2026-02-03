@@ -1,4 +1,5 @@
 import { CustomModel } from './storage';
+import { LOCAL_MODEL_ID, streamLocalChat } from './localLlama';
 
 export interface AIMessage {
   role: 'user' | 'assistant' | 'system';
@@ -33,13 +34,22 @@ interface CustomAPIResponse {
   choices?: Array<{ message: { content: string } }>;
 }
 
+interface HFResponse {
+  readonly generated_text?: string;
+  readonly text?: string;
+  readonly response?: string;
+  readonly content?: string;
+}
+
 class AIService {
   async streamChat(
     messages: AIMessage[],
     model: string,
     customModels: CustomModel[],
     apiKey: string | undefined,
-    onToken: (token: string) => void
+    onToken: (token: string) => void,
+    hfApiKey?: string,
+    geminiApiKey?: string
   ): Promise<AIResponse> {
     // Check if it's a custom model
     const customModel = customModels.find((m) => m.id === model);
@@ -56,6 +66,13 @@ class AIService {
       return this.streamOpenAI(messages, model, apiKey, onToken);
     } else if (model.startsWith('claude') || model.startsWith('anthropic')) {
       return this.streamAnthropic(messages, model, apiKey, onToken);
+    } else if (model.startsWith('gemini')) {
+      return this.streamGemini(messages, model, geminiApiKey, onToken);
+    } else if (model === LOCAL_MODEL_ID) {
+      return this.streamLocal(messages, onToken);
+    } else if (model.startsWith('hf-') || model.startsWith('liquidai/') || model.includes('/')) {
+      // Hugging Face model (hf- prefix or contains / like "LiquidAI/LFM2.5-1.2B-Thinking")
+      return await this.streamHuggingFace(messages, model, hfApiKey, onToken);
     }
 
     return {
@@ -206,6 +223,105 @@ class AIService {
     });
   }
 
+  private streamGemini(
+    messages: AIMessage[],
+    model: string,
+    apiKey: string | undefined,
+    onToken: (token: string) => void
+  ): Promise<AIResponse> {
+    return new Promise((resolve) => {
+      if (!apiKey) {
+        resolve({
+          content: 'Please add your Gemini API key.',
+          error: 'No API key provided',
+        });
+        return;
+      }
+
+      // Map model names to Gemini API model IDs
+      const modelMap: Record<string, string> = {
+        'gemini-2.5-flash': 'gemini-2.0-flash-exp',
+        'gemini-2.5-flash-lite': 'gemini-2.0-flash-thinking-exp',
+        'gemini-2.5-pro': 'gemini-2.5-pro-exp-09-24',
+        'gemini-1.5-flash': 'gemini-1.5-flash',
+        'gemini-1.5-pro': 'gemini-1.5-pro',
+      };
+
+      const geminiModel = modelMap[model] || model;
+
+      // Build contents array for Gemini API
+      const contents = messages
+        .filter(m => m.role !== 'system')
+        .map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }]
+        }));
+
+      // Add system instruction if present
+      const systemInstruction = messages.find(m => m.role === 'system')?.content;
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:streamGenerateContent?key=${apiKey}`);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+
+      let fullContent = '';
+
+      xhr.onprogress = () => {
+        const lines = xhr.responseText.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(trimmed.slice(6));
+              const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              if (text) {
+                fullContent += text;
+                onToken(text);
+              }
+            } catch (e) {
+              // Ignore parse errors for partial chunks
+            }
+          }
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ content: fullContent });
+        } else {
+          resolve({ content: xhr.responseText, error: 'API Error' });
+        }
+      };
+
+      xhr.onerror = () => {
+        resolve({ content: 'Network error', error: 'Network error' });
+      };
+
+      const requestBody: any = {
+        contents: contents,
+        generationConfig: {
+          maxOutputTokens: 2000,
+          temperature: 0.7,
+        }
+      };
+
+      if (systemInstruction) {
+        requestBody.systemInstruction = {
+          parts: [{ text: systemInstruction }]
+        };
+      }
+
+      xhr.send(JSON.stringify(requestBody));
+    });
+  }
+
+  private streamLocal(
+    messages: AIMessage[],
+    onToken: (token: string) => void
+  ): Promise<AIResponse> {
+    return streamLocalChat(messages, onToken);
+  }
+
   async chat(
     messages: AIMessage[],
     model: string,
@@ -217,6 +333,10 @@ class AIService {
 
     if (customModel) {
       return this.callCustomAPI(messages, customModel);
+    }
+
+    if (model === LOCAL_MODEL_ID) {
+      return streamLocalChat(messages);
     }
 
     // Default models

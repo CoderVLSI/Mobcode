@@ -15,6 +15,16 @@ export interface Message {
   content: string;
   timestamp: Date;
   codeDiff?: CodeDiff;
+  approval?: ApprovalRequest;
+  attachments?: MessageAttachment[];
+}
+
+export interface ApprovalRequest {
+  id: string;
+  description: string;
+  tool: string;
+  parameters: any;
+  status: 'pending' | 'approved' | 'denied';
 }
 
 export interface CodeDiff {
@@ -24,6 +34,25 @@ export interface CodeDiff {
   language: string;
 }
 
+export interface FileAttachment {
+  type: 'file';
+  name: string;
+  path: string;
+  size?: number;
+}
+
+export interface ImageAttachment {
+  type: 'image';
+  uri: string;
+  name?: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+}
+
+export type MessageAttachment = FileAttachment | ImageAttachment;
+
 export interface CustomModel {
   id: string;
   name: string;
@@ -32,12 +61,23 @@ export interface CustomModel {
   createdAt: Date;
 }
 
+export interface GitSettings {
+  remoteUrl: string;
+  username: string;
+  token: string;
+  authorName: string;
+  authorEmail: string;
+}
+
 const CHATS_KEY = '@cursor_chats';
 const CURRENT_CHAT_KEY = '@cursor_current_chat';
 const MODEL_KEY = '@cursor_model';
 const CUSTOM_MODELS_KEY = '@cursor_custom_models';
 const OPENAI_KEY_KEY = '@cursor_openai_key';
 const ANTHROPIC_KEY_KEY = '@cursor_anthropic_key';
+const HF_KEY_KEY = '@cursor_hf_key';
+const GEMINI_KEY_KEY = '@cursor_gemini_key';
+const GIT_SETTINGS_KEY = '@cursor_git_settings';
 
 export const storage = {
   // Get all chats
@@ -222,6 +262,88 @@ export const storage = {
       await AsyncStorage.setItem(ANTHROPIC_KEY_KEY, key);
     } catch (error) {
       console.error('Error setting Anthropic key:', error);
+    }
+  },
+
+  // Get Hugging Face API key
+  async getHuggingFaceKey(): Promise<string> {
+    try {
+      const key = await AsyncStorage.getItem(HF_KEY_KEY);
+      return key || '';
+    } catch (error) {
+      console.error('Error getting Hugging Face key:', error);
+      return '';
+    }
+  },
+
+  // Set Hugging Face API key
+  async setHuggingFaceKey(key: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem(HF_KEY_KEY, key);
+    } catch (error) {
+      console.error('Error setting Hugging Face key:', error);
+    }
+  },
+
+  // Get Gemini API key
+  async getGeminiKey(): Promise<string> {
+    try {
+      const key = await AsyncStorage.getItem(GEMINI_KEY_KEY);
+      return key || '';
+    } catch (error) {
+      console.error('Error getting Gemini key:', error);
+      return '';
+    }
+  },
+
+  // Set Gemini API key
+  async setGeminiKey(key: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem(GEMINI_KEY_KEY, key);
+    } catch (error) {
+      console.error('Error setting Gemini key:', error);
+    }
+  },
+
+  // Get git settings
+  async getGitSettings(): Promise<GitSettings> {
+    try {
+      const data = await AsyncStorage.getItem(GIT_SETTINGS_KEY);
+      if (!data) {
+        return {
+          remoteUrl: '',
+          username: '',
+          token: '',
+          authorName: 'Mobcode User',
+          authorEmail: 'user@example.com',
+        };
+      }
+      const parsed = JSON.parse(data);
+      return {
+        remoteUrl: parsed.remoteUrl || '',
+        username: parsed.username || '',
+        token: parsed.token || '',
+        authorName: parsed.authorName || 'Mobcode User',
+        authorEmail: parsed.authorEmail || 'user@example.com',
+      };
+    } catch (error) {
+      console.error('Error getting git settings:', error);
+      return {
+        remoteUrl: '',
+        username: '',
+        token: '',
+        authorName: 'Mobcode User',
+        authorEmail: 'user@example.com',
+      };
+    }
+  },
+
+  // Save git settings
+  async setGitSettings(settings: GitSettings): Promise<void> {
+    try {
+      await AsyncStorage.setItem(GIT_SETTINGS_KEY, JSON.stringify(settings));
+    } catch (error) {
+      console.error('Error saving git settings:', error);
     }
   },
 };

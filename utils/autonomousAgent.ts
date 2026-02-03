@@ -29,9 +29,11 @@ class AutonomousAgent {
     model: string = 'claude-3.5-sonnet',
     customModels: any[] = [],
     apiKey?: string,
+    hfApiKey?: string,
+    geminiApiKey?: string,
     onStream?: (token: string) => void
   ) {
-    const plan = await this.createPlan(userRequest, availableTools, model, customModels, apiKey, onStream);
+    const plan = await this.createPlan(userRequest, availableTools, model, customModels, apiKey, hfApiKey, geminiApiKey, onStream);
     onProgress({
       id: 'plan',
       description: `Plan: ${plan.steps.length} steps`,
@@ -99,7 +101,7 @@ class AutonomousAgent {
         ], model, customModels, apiKey, (token) => {
           summaryText += token;
           if (onStream) onStream(token);
-        });
+        }, hfApiKey, geminiApiKey);
 
         if (summaryText) {
           conversationalSummary = summaryText;
@@ -125,6 +127,8 @@ class AutonomousAgent {
     model: string = 'claude-3.5-sonnet',
     customModels: any[] = [],
     apiKey?: string,
+    hfApiKey?: string,
+    geminiApiKey?: string,
     onStream?: (token: string) => void
   ): Promise<ExecutionPlan> {
     const toolsDesc = toolRegistry.formatForAI();
@@ -164,7 +168,7 @@ ${toolsDesc}
 
 1. **Break tasks into 3-7 clear steps**
 2. **Be specific with parameters** - use real file paths
-3. **Mark approval correctly**: write_file, create_file, delete_file, run_command, append_file, update_package_json, init_project need approval; read_file, list_directory, search_files don't
+3. **Mark approval correctly**: write_file, create_file, delete_file, run_command, append_file, update_package_json, init_project, git_init, git_commit, git_set_remote, git_clone, git_pull, git_push need approval; read_file, list_directory, search_files don't
 4. **Consider file operations order** - read before writing, check before creating
 
 ## Response Format:
@@ -192,8 +196,7 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
         content: userRequest,
       },
     ], model, customModels, apiKey, (token) => {
-      fullContent += token;
-      
+
       // Determine if it's JSON or Chat
       if (!checkedJson && fullContent.trim().length > 0) {
         if (fullContent.trim().startsWith('{')) {
@@ -209,14 +212,14 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
         if (fullContent.length === token.length + (fullContent.length - token.length)) {
            // This logic is tricky. Simpler:
            // If we just decided it's NOT JSON, we might have buffered a few chars (e.g. "H", "e").
-           // Ideally we send them now. 
-           // For simplicity, just send 'token' if checkedJson is true. 
-           // Note: The very first token(s) might be missed if we buffer too aggressively, 
+           // Ideally we send them now.
+           // For simplicity, just send 'token' if checkedJson is true.
+           // Note: The very first token(s) might be missed if we buffer too aggressively,
            // but checking startsWith('{') usually happens on the first token unless it's whitespace.
            onStream(token);
         }
       }
-    });
+    }, hfApiKey, geminiApiKey);
 
     console.log('AI Response:', fullContent);
     console.log('Response length:', fullContent.length);

@@ -1,5 +1,33 @@
 export const AI_MODELS = [
   {
+    id: 'local-qwen2.5-coder-1.5b',
+    name: 'Local Qwen2.5 Coder 1.5B',
+    provider: 'On-device',
+    icon: 'phone-portrait',
+    description: 'Offline model (auto-download)',
+  },
+  {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    provider: 'Google',
+    icon: 'flash',
+    description: 'Ultra-fast with thinking capabilities',
+  },
+  {
+    id: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    provider: 'Google',
+    icon: 'trophy',
+    description: 'Advanced reasoning with 1M tokens',
+  },
+  {
+    id: 'gemini-1.5-flash',
+    name: 'Gemini 1.5 Flash',
+    provider: 'Google',
+    icon: 'flash-outline',
+    description: 'Fast and efficient',
+  },
+  {
     id: 'claude-3.5-sonnet',
     name: 'Claude 3.5 Sonnet',
     provider: 'Anthropic',

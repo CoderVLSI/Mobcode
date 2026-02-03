@@ -13,19 +13,9 @@ interface CodeDiffViewerProps {
 export function CodeDiffViewer({ diff, onClose, onApply }: CodeDiffViewerProps) {
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const lines = diff.newCode.split('\n');
   const oldLines = diff.oldCode.split('\n');
-
-  const getLineType = (lineNum: number) => {
-    const newLine = lines[lineNum]?.trim();
-    const oldLine = oldLines[lineNum]?.trim();
-
-    if (newLine === oldLine) return 'unchanged';
-    if (!oldLine) return 'added';
-    if (!newLine) return 'removed';
-    if (newLine !== oldLine) return 'modified';
-    return 'unchanged';
-  };
+  const newLines = diff.newCode.split('\n');
+  const diffRows = useMemo(() => buildDiffRows(oldLines, newLines), [diff.oldCode, diff.newCode]);
 
   return (
     <View style={styles.container}>
@@ -56,30 +46,32 @@ export function CodeDiffViewer({ diff, onClose, onApply }: CodeDiffViewerProps) 
 
       <ScrollView horizontal style={styles.scrollContainer}>
         <ScrollView style={styles.codeContainer}>
-          {lines.map((line, index) => {
-            const lineType = getLineType(index);
+          {diffRows.map((row, index) => {
+            if (row.type === 'hunk') {
+              return (
+                <View key={index} style={[styles.line, styles.hunkRow]}>
+                  <Text style={styles.hunkText}>{row.text}</Text>
+                </View>
+              );
+            }
+
             const backgroundColor =
-              lineType === 'added'
+              row.type === 'add'
                 ? `${theme.success}15`
-                : lineType === 'removed'
+                : row.type === 'remove'
                 ? `${theme.error}15`
-                : lineType === 'modified'
-                ? `${theme.accent}15`
                 : 'transparent';
+            const prefix =
+              row.type === 'add' ? '+' : row.type === 'remove' ? '-' : ' ';
+            const prefixColor =
+              row.type === 'add' ? theme.success : row.type === 'remove' ? theme.error : theme.textSecondary;
 
             return (
               <View key={index} style={[styles.line, { backgroundColor }]}>
-                <Text style={styles.lineNumber}>{index + 1}</Text>
-                <Text style={styles.lineContent}>{line || ' '}</Text>
-                {lineType === 'added' && (
-                  <Ionicons name="add" size={14} color={theme.success} style={styles.lineIcon} />
-                )}
-                {lineType === 'removed' && (
-                  <Ionicons name="remove" size={14} color={theme.error} style={styles.lineIcon} />
-                )}
-                {lineType === 'modified' && (
-                  <Ionicons name="swap-horizontal" size={14} color={theme.accent} style={styles.lineIcon} />
-                )}
+                <Text style={styles.lineNumber}>{row.oldNumber ?? ''}</Text>
+                <Text style={styles.lineNumber}>{row.newNumber ?? ''}</Text>
+                <Text style={[styles.linePrefix, { color: prefixColor }]}>{prefix}</Text>
+                <Text style={styles.lineContent}>{row.text || ' '}</Text>
               </View>
             );
           })}
@@ -87,6 +79,71 @@ export function CodeDiffViewer({ diff, onClose, onApply }: CodeDiffViewerProps) 
       </ScrollView>
     </View>
   );
+}
+
+type DiffRow = {
+  type: 'context' | 'add' | 'remove' | 'hunk';
+  oldNumber?: number;
+  newNumber?: number;
+  text: string;
+};
+
+function buildDiffRows(oldLines: string[], newLines: string[]): DiffRow[] {
+  const n = oldLines.length;
+  const m = newLines.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+
+  for (let i = n - 1; i >= 0; i -= 1) {
+    for (let j = m - 1; j >= 0; j -= 1) {
+      if (oldLines[i] === newLines[j]) {
+        dp[i][j] = dp[i + 1][j + 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+  }
+
+  const rows: DiffRow[] = [];
+  rows.push({
+    type: 'hunk',
+    text: `@@ -1,${n} +1,${m} @@`,
+  });
+  let i = 0;
+  let j = 0;
+  let oldNum = 1;
+  let newNum = 1;
+
+  while (i < n && j < m) {
+    if (oldLines[i] === newLines[j]) {
+      rows.push({ type: 'context', oldNumber: oldNum, newNumber: newNum, text: oldLines[i] });
+      i += 1;
+      j += 1;
+      oldNum += 1;
+      newNum += 1;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      rows.push({ type: 'remove', oldNumber: oldNum, text: oldLines[i] });
+      i += 1;
+      oldNum += 1;
+    } else {
+      rows.push({ type: 'add', newNumber: newNum, text: newLines[j] });
+      j += 1;
+      newNum += 1;
+    }
+  }
+
+  while (i < n) {
+    rows.push({ type: 'remove', oldNumber: oldNum, text: oldLines[i] });
+    i += 1;
+    oldNum += 1;
+  }
+
+  while (j < m) {
+    rows.push({ type: 'add', newNumber: newNum, text: newLines[j] });
+    j += 1;
+    newNum += 1;
+  }
+
+  return rows;
 }
 
 const createStyles = (theme: Theme) => StyleSheet.create({
@@ -158,21 +215,32 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
+  hunkRow: {
+    backgroundColor: `${theme.accent}12`,
+  },
+  hunkText: {
+    fontSize: 12,
+    color: theme.textSecondary,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
   lineNumber: {
     fontSize: 11,
     color: theme.textSecondary,
-    width: 30,
+    width: 28,
     textAlign: 'right',
-    marginRight: 12,
+    marginRight: 8,
     userSelect: 'none',
+  },
+  linePrefix: {
+    fontSize: 12,
+    width: 12,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   lineContent: {
     fontSize: 12,
     color: theme.text,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     flex: 1,
-  },
-  lineIcon: {
-    marginLeft: 8,
   },
 });

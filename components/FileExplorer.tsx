@@ -17,14 +17,17 @@ import { fileManager, FileNode } from '../utils/fileManager';
 import { codeParser, ParsedFile } from '../utils/codeParser';
 import { FileContextMenu } from './FileContextMenu';
 import { HTMLPreview } from './HTMLPreview';
+import { ComponentPreview } from './ComponentPreview';
+import { SAMPLE_PROJECTS } from '../data/sampleProjects';
 
 interface FileExplorerProps {
   visible: boolean;
   onClose: () => void;
   onFilesCreated?: (files: ParsedFile[]) => void;
+  onFileSelect?: (file: FileNode) => void;
 }
 
-export function FileExplorer({ visible, onClose, onFilesCreated }: FileExplorerProps) {
+export function FileExplorer({ visible, onClose, onFilesCreated, onFileSelect }: FileExplorerProps) {
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [fileTree, setFileTree] = useState<FileNode | null>(null);
@@ -42,6 +45,8 @@ export function FileExplorer({ visible, onClose, onFilesCreated }: FileExplorerP
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [showHTMLPreview, setShowHTMLPreview] = useState(false);
+  const [showSamples, setShowSamples] = useState(false);
+  const [previewComponentId, setPreviewComponentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -78,6 +83,7 @@ export function FileExplorer({ visible, onClose, onFilesCreated }: FileExplorerP
         const content = await fileManager.readFile(node.path);
         setFileContent(content);
         setSelectedFile(node);
+        onFileSelect?.(node);
       } catch (error) {
         Alert.alert('Error', 'Could not read file');
       }
@@ -319,6 +325,10 @@ export function FileExplorer({ visible, onClose, onFilesCreated }: FileExplorerP
             <Ionicons name="create" size={20} color={theme.accent} />
             <Text style={styles.toolbarText}>New Folder</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.toolbarButton} onPress={() => setShowSamples(true)}>
+            <Ionicons name="folder-open" size={20} color={theme.accent} />
+            <Text style={styles.toolbarText}>Samples</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.content}>
@@ -484,6 +494,77 @@ export function FileExplorer({ visible, onClose, onFilesCreated }: FileExplorerP
           fileName={contextMenuFile?.name || ''}
           onClose={() => setShowHTMLPreview(false)}
         />
+
+        {/* Samples Modal */}
+        <Modal visible={showSamples} transparent animationType="fade">
+          <View style={styles.samplesModalOverlay}>
+            <TouchableOpacity style={styles.samplesBackdrop} activeOpacity={1} onPress={() => setShowSamples(false)} />
+            <View style={styles.samplesModalContent}>
+              <View style={styles.samplesModalHeader}>
+                <Text style={styles.samplesModalTitle}>Sample Projects</Text>
+                <TouchableOpacity onPress={() => setShowSamples(false)}>
+                  <Ionicons name="close" size={22} color={theme.text} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.samplesList}>
+                {SAMPLE_PROJECTS.map((project) => (
+                  <View key={project.id} style={styles.sampleCard}>
+                    <View style={styles.sampleIcon}>
+                      <Ionicons name={project.icon as any} size={24} color={theme.accent} />
+                    </View>
+                    <View style={styles.sampleInfo}>
+                      <Text style={styles.sampleName}>{project.name}</Text>
+                      <Text style={styles.sampleDesc} numberOfLines={2}>{project.description}</Text>
+                      <View style={styles.sampleFiles}>
+                        {project.files.map((f) => (
+                          <Text key={f.name} style={styles.sampleFileName}>{f.name}</Text>
+                        ))}
+                      </View>
+                    </View>
+                    <View style={styles.sampleActions}>
+                      <TouchableOpacity
+                        style={styles.samplePreviewButton}
+                        onPress={() => setPreviewComponentId(project.id)}
+                      >
+                        <Ionicons name="eye" size={20} color={theme.text} />
+                        <Text style={styles.sampleActionText}>Preview</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sampleAddButton}
+                        onPress={async () => {
+                          try {
+                            const root = fileManager.getProjectRoot();
+                            const projectDir = `${root}/samples/${project.id}`;
+                            await fileManager.createFolder(projectDir);
+                            for (const file of project.files) {
+                              await fileManager.writeFile(`${projectDir}/${file.name}`, file.content);
+                            }
+                            setShowSamples(false);
+                            loadFiles();
+                            Alert.alert('Success', `Created ${project.name} in samples/${project.id}/`);
+                          } catch (error) {
+                            Alert.alert('Error', `Failed to create project: ${(error as Error).message}`);
+                          }
+                        }}
+                      >
+                        <Ionicons name="add-circle" size={20} color={theme.accent} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Component Preview Modal */}
+        {previewComponentId && (
+          <ComponentPreview
+            visible={!!previewComponentId}
+            onClose={() => setPreviewComponentId(null)}
+            componentId={previewComponentId}
+          />
+        )}
       </View>
     </Modal>
   );
@@ -679,5 +760,111 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: theme.text,
+  },
+  samplesModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  samplesBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  samplesModalContent: {
+    backgroundColor: theme.surface,
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '75%',
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  samplesModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  samplesModalTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  samplesList: {
+    maxHeight: 400,
+  },
+  sampleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+    gap: 12,
+  },
+  sampleActions: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  samplePreviewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
+  },
+  sampleActionText: {
+    fontSize: 11,
+    color: theme.text,
+    fontWeight: '500',
+  },
+  sampleAddButton: {
+    padding: 6,
+  },
+  sampleIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: `${theme.accent}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sampleInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  sampleName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  sampleDesc: {
+    fontSize: 12,
+    color: theme.textSecondary,
+    lineHeight: 16,
+  },
+  sampleFiles: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+  },
+  sampleFileName: {
+    fontSize: 10,
+    color: theme.accent,
+    backgroundColor: `${theme.accent}12`,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
 });
