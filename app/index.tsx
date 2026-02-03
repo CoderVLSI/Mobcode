@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Alert,
   Modal,
+  Animated,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -1803,17 +1804,70 @@ function ApprovalInlineCard({
 }
 
 function TypingIndicator({ styles, theme }: { styles: any; theme: Theme }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatTime = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
+
+  // Animated values for each dot
+  const dot1Anim = useRef(new Animated.Value(0)).current;
+  const dot2Anim = useRef(new Animated.Value(0)).current;
+  const dot3Anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const pulsate = (animatedValue: Animated.Value, delay: number) => {
+      Animated.sequence([
+        Animated.timing(animatedValue, {
+          toValue: 1,
+          duration: 600,
+          delay,
+          useNativeDriver: true,
+        }),
+        Animated.timing(animatedValue, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ]).start(() => pulsate(animatedValue, delay));
+    };
+
+    pulsate(dot1Anim, 0);
+    pulsate(dot2Anim, 150);
+    pulsate(dot3Anim, 300);
+  }, []);
+
+  const dotScale = (anim: Animated.Value) => ({
+    transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.5] }) }],
+    opacity: anim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }),
+  });
+
   return (
     <View style={styles.messageRow}>
       <View style={styles.avatarContainer}>
         <Ionicons name="sparkles" size={20} color={theme.accent} />
       </View>
       <View style={styles.messageContentWrapper}>
-        <Text style={styles.senderName}>Cursor</Text>
+        <View style={styles.typingHeader}>
+          <Text style={styles.senderName}>Cursor</Text>
+          <Text style={styles.typingTimer}>Thinking... {formatTime(elapsed)}</Text>
+        </View>
         <View style={styles.typingIndicator}>
-          <View style={[styles.typingDot, styles.typingDot1]} />
-          <View style={[styles.typingDot, styles.typingDot2]} />
-          <View style={[styles.typingDot, styles.typingDot3]} />
+          <Animated.View style={[styles.typingDot, styles.typingDot1, dotScale(dot1Anim)]} />
+          <Animated.View style={[styles.typingDot, styles.typingDot2, dotScale(dot2Anim)]} />
+          <Animated.View style={[styles.typingDot, styles.typingDot3, dotScale(dot3Anim)]} />
         </View>
       </View>
     </View>
@@ -2566,16 +2620,27 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     gap: 4,
     paddingVertical: 4,
   },
+  typingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  typingTimer: {
+    fontSize: 11,
+    color: theme.textSecondary,
+    fontStyle: 'italic',
+  },
   typingDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: theme.textSecondary,
   },
-  typingDot1: { opacity: 1 },
-  typingDot2: { opacity: 0.6 },
-  typingDot3: { opacity: 0.3 },
-  
+  typingDot1: {},
+  typingDot2: {},
+  typingDot3: {},
+
   // Composer Styles
   inputContainer: {
     backgroundColor: theme.inputBackground,
