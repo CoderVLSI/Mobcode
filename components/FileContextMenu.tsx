@@ -17,6 +17,7 @@ interface FileContextMenuProps {
   filePath: string;
   onClose: () => void;
   onOpenInBrowser: () => void;
+  onOpenReactPreview?: () => void;
   onDelete: () => void;
   onRename: () => void;
 }
@@ -29,10 +30,12 @@ export function FileContextMenu({
   filePath,
   onClose,
   onOpenInBrowser,
+  onOpenReactPreview,
   onDelete,
   onRename,
 }: FileContextMenuProps) {
   const isHtmlFile = fileName.toLowerCase().endsWith('.html');
+  const isReactFile = fileName.toLowerCase().endsWith('.jsx') || fileName.toLowerCase().endsWith('.tsx');
 
   const handleOpenInBrowser = () => {
     onClose();
@@ -63,6 +66,13 @@ export function FileContextMenu({
             <TouchableOpacity style={styles.menuItem} onPress={handleOpenInBrowser}>
               <Ionicons name="globe" size={18} color={Colors.accent} />
               <Text style={[styles.menuItemText, { color: Colors.accent }]}>Open in Browser</Text>
+            </TouchableOpacity>
+          )}
+
+          {isReactFile && onOpenReactPreview && (
+            <TouchableOpacity style={styles.menuItem} onPress={onOpenReactPreview}>
+              <Ionicons name="logo-react" size={18} color={Colors.accent} />
+              <Text style={[styles.menuItemText, { color: Colors.accent }]}>Open React Preview</Text>
             </TouchableOpacity>
           )}
 

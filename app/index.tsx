@@ -31,6 +31,9 @@ import { MCPManager } from '../components/MCPManager';
 import { TaskTracker } from '../components/TaskTracker';
 import { GitPanel } from '../components/GitPanel';
 import { FileAttachmentPicker } from '../components/FileAttachmentPicker';
+import { HTMLPreview } from '../components/HTMLPreview';
+import { ReactPreview } from '../components/ReactPreview';
+import { ComponentPreview } from '../components/ComponentPreview';
 import { MessageContent } from '../components/MessageContent';
 import { ToolsHelp } from '../components/ToolsHelp';
 import { AI_MODELS } from '../constants/Models';
@@ -41,6 +44,7 @@ import {
   deleteLocalModel,
   getLocalModelInfo,
 } from '../utils/localLlama';
+import { previewBus, PreviewRequest } from '../utils/previewBus';
 
 export default function ChatScreen() {
   const { theme, isDarkMode, toggleTheme } = useTheme();
@@ -83,12 +87,30 @@ export default function ChatScreen() {
   const [localModelError, setLocalModelError] = useState<string | null>(null);
   const [showLocalModelModal, setShowLocalModelModal] = useState(false);
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([]);
+  const [htmlPreview, setHtmlPreview] = useState<{ path: string; name: string } | null>(null);
+  const [reactPreview, setReactPreview] = useState<{ path: string; name: string } | null>(null);
+  const [previewComponentId, setPreviewComponentId] = useState<string | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const approvalResolverRef = useRef<((value: boolean) => void) | null>(null);
   const messageCounterRef = useRef(0);
 
   useEffect(() => {
     loadInitialData();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = previewBus.subscribe((request: PreviewRequest) => {
+      if (request.type === 'html') {
+        const name = request.name || request.path.split('/').pop() || 'preview.html';
+        setHtmlPreview({ path: request.path, name });
+      } else if (request.type === 'react') {
+        const name = request.name || request.path.split('/').pop() || 'App.jsx';
+        setReactPreview({ path: request.path, name });
+      } else if (request.type === 'component') {
+        setPreviewComponentId(request.componentId);
+      }
+    });
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -520,13 +542,24 @@ export default function ChatScreen() {
       }
     }
 
+    const historyMessages = updatedMessages
+      .slice(0, -1)
+      .filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.approval)
+      .filter((m) => m.content && !m.id.startsWith('progress-'))
+      .slice(-12)
+      .map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
     const result = await autonomousAgent.executeTask(
       agentInput,
       [
         'read_file', 'write_file', 'create_file', 'delete_file', 'list_directory', 'search_files', 'run_command',
         'find_files', 'append_file', 'file_info', 'count_lines', 'list_imports',
         'create_component', 'npm_info', 'npm_install', 'update_package_json', 'init_project',
-        'git_init', 'git_status', 'git_add', 'git_commit', 'git_log', 'git_set_remote', 'git_clone', 'git_pull', 'git_push'
+        'git_init', 'git_status', 'git_add', 'git_commit', 'git_log', 'git_set_remote', 'git_clone', 'git_pull', 'git_push',
+        'open_html_preview', 'open_react_preview', 'open_component_preview', 'list_preview_components'
       ],
       async (step, allSteps) => {
         // Progress callback - update task tracker
@@ -569,7 +602,8 @@ export default function ChatScreen() {
       apiKey,
       hfApiKey,
       geminiApiKey,
-      handleStream // Pass the streaming callback
+      handleStream, // Pass the streaming callback
+      historyMessages
     );
 
     console.log('Agent result:', result);
@@ -583,7 +617,7 @@ export default function ChatScreen() {
 
     // Ensure we have at least one response if nothing was streamed (fallback)
     if (!streamingMessageIdRef.current && !result.plan?.steps.length) {
-       const finalContent = result.finalOutput || result.plan?.conversationalResponse || 'Done!';
+       const finalContent = result.plan?.conversationalResponse || result.finalOutput || 'Done!';
        const summaryMsg: Message = {
         id: `summary-${Date.now()}`,
         role: 'assistant',
@@ -972,6 +1006,32 @@ export default function ChatScreen() {
         onClose={() => setShowFileExplorer(false)}
         onFileSelect={handleFileSelect}
       />
+
+      {htmlPreview && (
+        <HTMLPreview
+          visible={!!htmlPreview}
+          filePath={htmlPreview.path}
+          fileName={htmlPreview.name}
+          onClose={() => setHtmlPreview(null)}
+        />
+      )}
+
+      {reactPreview && (
+        <ReactPreview
+          visible={!!reactPreview}
+          filePath={reactPreview.path}
+          fileName={reactPreview.name}
+          onClose={() => setReactPreview(null)}
+        />
+      )}
+
+      {previewComponentId && (
+        <ComponentPreview
+          visible={!!previewComponentId}
+          onClose={() => setPreviewComponentId(null)}
+          componentId={previewComponentId}
+        />
+      )}
 
       <FileSearch
         visible={showFileSearch}

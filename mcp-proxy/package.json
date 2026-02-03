@@ -1,0 +1,27 @@
+{
+  "name": "mcp-http-proxy",
+  "version": "1.0.0",
+  "description": "HTTP-to-STDIO proxy server for Model Context Protocol (MCP) servers",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "proxy",
+    "http",
+    "stdio"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

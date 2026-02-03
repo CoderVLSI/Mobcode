@@ -66,6 +66,16 @@ const TOOLS = [
       { name: 'init_project', desc: 'Initialize project structure', approval: true },
     ],
   },
+  {
+    category: 'Previews',
+    icon: 'eye-outline',
+    tools: [
+      { name: 'open_html_preview', desc: 'Open an HTML file in the in-app preview', approval: false },
+      { name: 'open_react_preview', desc: 'Open a React file in the in-app preview', approval: false },
+      { name: 'list_preview_components', desc: 'List available sample component previews', approval: false },
+      { name: 'open_component_preview', desc: 'Open a sample component preview by id', approval: false },
+    ],
+  },
 ];
 
 export function ToolsHelp({ visible, onClose }: ToolsHelpProps) {

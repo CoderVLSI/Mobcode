@@ -31,9 +31,20 @@ class AutonomousAgent {
     apiKey?: string,
     hfApiKey?: string,
     geminiApiKey?: string,
-    onStream?: (token: string) => void
+    onStream?: (token: string) => void,
+    history: AIMessage[] = []
   ) {
-    const plan = await this.createPlan(userRequest, availableTools, model, customModels, apiKey, hfApiKey, geminiApiKey, onStream);
+    const plan = await this.createPlan(
+      userRequest,
+      availableTools,
+      model,
+      customModels,
+      apiKey,
+      hfApiKey,
+      geminiApiKey,
+      onStream,
+      history
+    );
     onProgress({
       id: 'plan',
       description: `Plan: ${plan.steps.length} steps`,
@@ -41,6 +52,16 @@ class AutonomousAgent {
       parameters: {},
       status: 'completed',
     }, plan.steps);
+
+    if (plan.steps.length === 0 && plan.conversationalResponse) {
+      return {
+        success: true,
+        plan,
+        finalOutput: plan.conversationalResponse,
+        stepsCompleted: 0,
+        stepsFailed: 0,
+      };
+    }
 
     let completed = 0, failed = 0;
 
@@ -129,7 +150,8 @@ class AutonomousAgent {
     apiKey?: string,
     hfApiKey?: string,
     geminiApiKey?: string,
-    onStream?: (token: string) => void
+    onStream?: (token: string) => void,
+    history: AIMessage[] = []
   ): Promise<ExecutionPlan> {
     const toolsDesc = toolRegistry.formatForAI();
 
@@ -137,6 +159,10 @@ class AutonomousAgent {
     let isJson = false;
     let checkedJson = false;
     let hasStreamed = false;
+
+    const sanitizedHistory = history
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .filter((m) => m.content && m.content.trim().length > 0);
 
     const response = await aiService.streamChat([
       {
@@ -192,6 +218,7 @@ For **tasks** - Respond ONLY with valid JSON:
 
 Be friendly and helpful! If someone just wants to chat, have a normal conversation. Only use tools when they ask you to DO something with files/code.`,
       },
+      ...sanitizedHistory,
       {
         role: 'user',
         content: userRequest,

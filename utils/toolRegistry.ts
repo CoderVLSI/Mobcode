@@ -1,6 +1,8 @@
 import { fileManager } from './fileManager';
 import { mcpClient } from './mcpClient';
 import { gitService } from './gitService';
+import { previewBus } from './previewBus';
+import { SAMPLE_PROJECTS } from '../data/sampleProjects';
 
 export interface ToolParameter {
   name: string;
@@ -114,6 +116,16 @@ class ToolRegistry {
   }
 
   private registerBuiltInTools(): void {
+    const resolvePath = (inputPath?: string): string => {
+      const root = fileManager.getProjectRoot();
+      const normalizedRoot = root.endsWith('/') ? root.slice(0, -1) : root;
+      if (!inputPath) return normalizedRoot || root;
+      if (inputPath.startsWith('file://')) return inputPath;
+      if (normalizedRoot && inputPath.startsWith(normalizedRoot)) return inputPath;
+      const clean = inputPath.startsWith('/') ? inputPath.slice(1) : inputPath;
+      return normalizedRoot ? `${normalizedRoot}/${clean}` : clean;
+    };
+
     // File operations
     this.register({
       name: 'read_file',
@@ -122,8 +134,88 @@ class ToolRegistry {
         { name: 'path', type: 'string', description: 'File path to read', required: true },
       ],
       execute: async (params) => {
-        const content = await fileManager.readFile(params.path);
+        const content = await fileManager.readFile(resolvePath(params.path));
         return { success: true, output: content };
+      },
+      requiresApproval: false,
+    });
+
+    this.register({
+      name: 'open_html_preview',
+      description: 'Open the in-app HTML preview for a local HTML file',
+      parameters: [
+        { name: 'path', type: 'string', description: 'Path to the HTML file (relative to project root or absolute file://)', required: true },
+        { name: 'name', type: 'string', description: 'Optional display name for the preview', required: false },
+      ],
+      execute: async (params) => {
+        const resolvedPath = resolvePath(params.path);
+        const exists = await fileManager.fileExists(resolvedPath);
+        if (!exists) {
+          return { success: false, output: '', error: `File not found: ${resolvedPath}` };
+        }
+        previewBus.emit({ type: 'html', path: resolvedPath, name: params.name });
+        return { success: true, output: `Opened HTML preview: ${resolvedPath}` };
+      },
+      requiresApproval: false,
+    });
+
+    this.register({
+      name: 'open_react_preview',
+      description: 'Open the in-app React preview for a local React file (.jsx/.tsx)',
+      parameters: [
+        { name: 'path', type: 'string', description: 'Path to the React file (relative to project root or absolute file://)', required: true },
+        { name: 'name', type: 'string', description: 'Optional display name for the preview', required: false },
+      ],
+      execute: async (params) => {
+        const resolvedPath = resolvePath(params.path);
+        const exists = await fileManager.fileExists(resolvedPath);
+        if (!exists) {
+          return { success: false, output: '', error: `File not found: ${resolvedPath}` };
+        }
+        previewBus.emit({ type: 'react', path: resolvedPath, name: params.name });
+        return { success: true, output: `Opened React preview: ${resolvedPath}` };
+      },
+      requiresApproval: false,
+    });
+
+    this.register({
+      name: 'list_preview_components',
+      description: 'List available sample component previews (id and name)',
+      parameters: [],
+      execute: async () => {
+        const list = SAMPLE_PROJECTS.map((project) => `${project.id} - ${project.name}`);
+        return {
+          success: true,
+          output: list.join('\n') || 'No preview components available',
+          data: SAMPLE_PROJECTS.map((project) => ({
+            id: project.id,
+            name: project.name,
+            description: project.description,
+            category: project.category,
+          })),
+        };
+      },
+      requiresApproval: false,
+    });
+
+    this.register({
+      name: 'open_component_preview',
+      description: 'Open the in-app sample component preview by id',
+      parameters: [
+        { name: 'componentId', type: 'string', description: 'Sample component id from list_preview_components', required: true },
+      ],
+      execute: async (params) => {
+        const match = SAMPLE_PROJECTS.find((project) => project.id === params.componentId);
+        if (!match) {
+          const available = SAMPLE_PROJECTS.map((project) => project.id).join(', ');
+          return {
+            success: false,
+            output: '',
+            error: available ? `Unknown componentId. Available: ${available}` : 'No preview components available',
+          };
+        }
+        previewBus.emit({ type: 'component', componentId: match.id });
+        return { success: true, output: `Opened component preview: ${match.name}` };
       },
       requiresApproval: false,
     });
@@ -136,8 +228,9 @@ class ToolRegistry {
         { name: 'content', type: 'string', description: 'Content to write', required: true },
       ],
       execute: async (params) => {
-        await fileManager.writeFile(params.path, params.content);
-        return { success: true, output: `File written: ${params.path}` };
+        const resolvedPath = resolvePath(params.path);
+        await fileManager.writeFile(resolvedPath, params.content);
+        return { success: true, output: `File written: ${resolvedPath}` };
       },
       requiresApproval: true,
     });
@@ -149,8 +242,9 @@ class ToolRegistry {
         { name: 'path', type: 'string', description: 'File path to create', required: true },
       ],
       execute: async (params) => {
-        await fileManager.createFile(params.path);
-        return { success: true, output: `File created: ${params.path}` };
+        const resolvedPath = resolvePath(params.path);
+        await fileManager.createFile(resolvedPath);
+        return { success: true, output: `File created: ${resolvedPath}` };
       },
       requiresApproval: true,
     });
@@ -162,8 +256,9 @@ class ToolRegistry {
         { name: 'path', type: 'string', description: 'File/folder path to delete', required: true },
       ],
       execute: async (params) => {
-        await fileManager.deleteFile(params.path);
-        return { success: true, output: `Deleted: ${params.path}` };
+        const resolvedPath = resolvePath(params.path);
+        await fileManager.deleteFile(resolvedPath);
+        return { success: true, output: `Deleted: ${resolvedPath}` };
       },
       requiresApproval: true,
     });
@@ -175,7 +270,7 @@ class ToolRegistry {
         { name: 'path', type: 'string', description: 'Directory path (default: project root)', required: false },
       ],
       execute: async (params) => {
-        const path = params.path || fileManager.getProjectRoot();
+        const path = resolvePath(params.path);
         const files = await fileManager.listFiles(path);
         const fileList = files.map(f => `${f.type === 'folder' ? '[DIR]' : '[FILE]'} ${f.name}`).join('\n');
         return { success: true, output: fileList || 'Empty directory', data: files };
@@ -388,9 +483,10 @@ class ToolRegistry {
         { name: 'content', type: 'string', description: 'Content to append', required: true },
       ],
       execute: async (params) => {
-        const existing = await fileManager.readFile(params.path);
-        await fileManager.writeFile(params.path, existing + '\n' + params.content);
-        return { success: true, output: `Appended to: ${params.path}` };
+        const resolvedPath = resolvePath(params.path);
+        const existing = await fileManager.readFile(resolvedPath);
+        await fileManager.writeFile(resolvedPath, existing + '\n' + params.content);
+        return { success: true, output: `Appended to: ${resolvedPath}` };
       },
       requiresApproval: true,
     });
@@ -402,16 +498,17 @@ class ToolRegistry {
         { name: 'path', type: 'string', description: 'File path', required: true },
       ],
       execute: async (params) => {
-        const content = await fileManager.readFile(params.path);
+        const resolvedPath = resolvePath(params.path);
+        const content = await fileManager.readFile(resolvedPath);
         const lines = content.split('\n').length;
         const words = content.split(/\s+/).filter(w => w.length > 0).length;
         const chars = content.length;
-        const ext = params.path.split('.').pop()?.toLowerCase() || 'unknown';
+        const ext = resolvedPath.split('.').pop()?.toLowerCase() || 'unknown';
 
         return {
           success: true,
-          output: `File: ${params.path}\nType: ${ext}\nLines: ${lines}\nWords: ${words}\nCharacters: ${chars}\nSize: ${chars} bytes`,
-          data: { path: params.path, type: ext, lines, words, chars },
+          output: `File: ${resolvedPath}\nType: ${ext}\nLines: ${lines}\nWords: ${words}\nCharacters: ${chars}\nSize: ${chars} bytes`,
+          data: { path: resolvedPath, type: ext, lines, words, chars },
         };
       },
       requiresApproval: false,
@@ -458,12 +555,13 @@ class ToolRegistry {
             data: { fileCount, totalLines },
           };
         } else {
-          const content = await fileManager.readFile(params.path);
+          const resolvedPath = resolvePath(params.path);
+          const content = await fileManager.readFile(resolvedPath);
           const lines = content.split('\n').length;
           return {
             success: true,
-            output: `File: ${params.path}\nLines: ${lines}`,
-            data: { path: params.path, lines },
+            output: `File: ${resolvedPath}\nLines: ${lines}`,
+            data: { path: resolvedPath, lines },
           };
         }
       },
@@ -477,7 +575,7 @@ class ToolRegistry {
         { name: 'path', type: 'string', description: 'File path', required: true },
       ],
       execute: async (params) => {
-        const content = await fileManager.readFile(params.path);
+        const content = await fileManager.readFile(resolvePath(params.path));
         const imports = content.match(/^import .*$/gm);
 
         return {
@@ -501,7 +599,7 @@ class ToolRegistry {
       execute: async (params) => {
         const { name, type, path } = params;
         const isRN = type === 'react-native';
-        const filePath = path || `${fileManager.getProjectRoot()}/components/${name}.tsx`;
+        const filePath = resolvePath(path || `${fileManager.getProjectRoot()}/components/${name}.tsx`);
 
         const template = isRN
           ? `import React from 'react';

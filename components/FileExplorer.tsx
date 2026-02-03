@@ -17,6 +17,7 @@ import { fileManager, FileNode } from '../utils/fileManager';
 import { codeParser, ParsedFile } from '../utils/codeParser';
 import { FileContextMenu } from './FileContextMenu';
 import { HTMLPreview } from './HTMLPreview';
+import { ReactPreview } from './ReactPreview';
 import { ComponentPreview } from './ComponentPreview';
 import { SAMPLE_PROJECTS } from '../data/sampleProjects';
 
@@ -45,6 +46,8 @@ export function FileExplorer({ visible, onClose, onFilesCreated, onFileSelect }:
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [showHTMLPreview, setShowHTMLPreview] = useState(false);
+  const [showReactPreview, setShowReactPreview] = useState(false);
+  const [reactPreviewFile, setReactPreviewFile] = useState<FileNode | null>(null);
   const [showSamples, setShowSamples] = useState(false);
   const [previewComponentId, setPreviewComponentId] = useState<string | null>(null);
 
@@ -193,6 +196,13 @@ export function FileExplorer({ visible, onClose, onFilesCreated, onFileSelect }:
   const handleOpenHTMLPreview = () => {
     setShowContextMenu(false);
     setShowHTMLPreview(true);
+  };
+
+  const handleOpenReactPreview = () => {
+    if (contextMenuFile?.type !== 'file') return;
+    setReactPreviewFile(contextMenuFile);
+    setShowContextMenu(false);
+    setShowReactPreview(true);
   };
 
   const getFileIcon = (fileName: string, type: string) => {
@@ -483,6 +493,7 @@ export function FileExplorer({ visible, onClose, onFilesCreated, onFileSelect }:
           filePath={contextMenuFile?.path || ''}
           onClose={() => setShowContextMenu(false)}
           onOpenInBrowser={handleOpenHTMLPreview}
+          onOpenReactPreview={handleOpenReactPreview}
           onRename={handleRenameFile}
           onDelete={handleDeleteFile}
         />
@@ -494,6 +505,19 @@ export function FileExplorer({ visible, onClose, onFilesCreated, onFileSelect }:
           fileName={contextMenuFile?.name || ''}
           onClose={() => setShowHTMLPreview(false)}
         />
+
+        {/* React Preview Modal */}
+        {reactPreviewFile && (
+          <ReactPreview
+            visible={showReactPreview}
+            filePath={reactPreviewFile.path}
+            fileName={reactPreviewFile.name}
+            onClose={() => {
+              setShowReactPreview(false);
+              setReactPreviewFile(null);
+            }}
+          />
+        )}
 
         {/* Samples Modal */}
         <Modal visible={showSamples} transparent animationType="fade">
