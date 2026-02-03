@@ -129,23 +129,35 @@ export const ensureLocalModelReady = async (onProgress?: (progress: number) => v
 
 export const getLocalLlamaContext = async () => {
   if (!initLlama) {
-    throw new Error('Local LLM not available. Use a development build to enable this feature.');
+    throw new Error('Local LLM not available. The llama.rn module is not installed or this is running in Expo Go.');
   }
   if (llamaContext) return llamaContext;
   if (!initPromise) {
     initPromise = (async () => {
       const info = await getLocalModelInfo();
       if (!info.exists) {
-        throw new Error('Local model not downloaded.');
+        throw new Error('Local model not downloaded. Please download the model first.');
       }
 
-      llamaContext = await initLlama({
-        model: info.uri,
-        use_mlock: false,
-        n_ctx: 2048,
-      });
+      console.log('Initializing llama.rn with model:', info.uri);
 
-      return llamaContext;
+      try {
+        // llama.rn requires file:// prefix for local paths
+        const modelPath = info.uri.startsWith('file://') ? info.uri : `file://${info.uri}`;
+
+        llamaContext = await initLlama({
+          model: modelPath,
+          use_mlock: false,
+          n_ctx: 2048,
+          n_gpu_layers: 0, // Use CPU only
+        });
+
+        console.log('Llama context initialized successfully');
+        return llamaContext;
+      } catch (error) {
+        console.error('Failed to initialize llama.rn:', error);
+        throw new Error(`Llama initialization failed: ${(error as Error).message}`);
+      }
     })().catch((error) => {
       initPromise = null;
       throw error;
