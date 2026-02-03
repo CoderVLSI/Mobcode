@@ -876,12 +876,14 @@ export default function ChatScreen() {
         </View>
       </View>
 
-      <View style={{ flex: 1 }}>
+
+      <View style={{ flex: 1, flexDirection: 'column' }}>
         <ScrollView
           ref={scrollViewRef}
-          style={styles.messagesContainer}
+          style={{ flex: 1 }}
           contentContainerStyle={styles.messagesContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
         >
           {currentChat?.messages.map((message) => (
             <View key={message.id}>
@@ -912,153 +914,78 @@ export default function ChatScreen() {
           {isTyping && <TypingIndicator styles={styles} theme={theme} />}
         </ScrollView>
 
-        {Platform.OS === 'ios' ? (
-          <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
-            <View style={[styles.bottomBar, { paddingBottom: 12 + insets.bottom }]}>
-              {(attachedFiles.length > 0 || attachedImages.length > 0) && (
-                <ScrollView horizontal style={styles.attachmentsScroll} contentContainerStyle={styles.attachmentsScrollContent}>
-                  {attachedFiles.map((file) => (
-                    <View key={file.path} style={styles.attachmentPill}>
-                      <Ionicons name="document-text-outline" size={11} color={theme.textSecondary} />
-                      <Text style={styles.attachmentText} numberOfLines={1}>{file.name}</Text>
-                      <TouchableOpacity onPress={() => removeAttachment(file.path)} style={styles.attachmentRemove}>
-                        <Ionicons name="close" size={11} color={theme.textSecondary} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  {attachedImages.map((image) => (
-                    <View key={image.uri} style={styles.attachmentImageWrapper}>
-                      <Image source={{ uri: image.uri }} style={styles.attachmentImage} />
-                      <TouchableOpacity onPress={() => removeImageAttachment(image.uri)} style={styles.attachmentImageRemove}>
-                        <Ionicons name="close" size={10} color="#fff" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </ScrollView>
-              )}
-
-              <View style={styles.inputRow}>
-                <TouchableOpacity onPress={() => setShowModelPicker(true)} style={styles.modelIconButton}>
-                  <Ionicons name="sparkles" size={16} color={theme.accent} />
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => setShowAttachmentPicker(true)} style={styles.iconButtonSmall}>
-                  <Ionicons name="attach" size={18} color={theme.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={pickImages} style={styles.iconButtonSmall}>
-                  <Ionicons name="image-outline" size={18} color={theme.textSecondary} />
-                </TouchableOpacity>
-
-                <TextInput
-                  style={styles.compactInput}
-                  value={inputText}
-                  onChangeText={setInputText}
-                  placeholder="Ask anything..."
-                  placeholderTextColor={theme.placeholder}
-                  multiline
-                  maxLength={4000}
-                  textAlignVertical="top"
-                  autoCapitalize="sentences"
-                  autoCorrect
-                  enablesReturnKeyAutomatically
-                  keyboardAppearance={isDarkMode ? 'dark' : 'light'}
-                  editable={!isTyping}
-                />
-
-                <View style={styles.inputActions}>
-                  {isTyping ? (
-                    <TouchableOpacity
-                      onPress={stopGeneration}
-                      style={[styles.sendButtonCompact, styles.stopButton]}
-                    >
-                      <Ionicons name="stop" size={18} color="#fff" />
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      onPress={sendMessage}
-                      style={[styles.sendButtonCompact, inputText.trim() === '' && styles.sendButtonDisabled]}
-                      disabled={inputText.trim() === ''}
-                    >
-                      <Ionicons name="arrow-up" size={18} color={inputText.trim() ? '#fff' : theme.textSecondary} />
-                    </TouchableOpacity>
-                  )}
+        <View style={[styles.bottomBar, { paddingBottom: 12 + insets.bottom }]}>
+          {(attachedFiles.length > 0 || attachedImages.length > 0) && (
+            <ScrollView horizontal style={styles.attachmentsScroll} contentContainerStyle={styles.attachmentsScrollContent}>
+              {attachedFiles.map((file) => (
+                <View key={file.path} style={styles.attachmentPill}>
+                  <Ionicons name="document-text-outline" size={11} color={theme.textSecondary} />
+                  <Text style={styles.attachmentText} numberOfLines={1}>{file.name}</Text>
+                  <TouchableOpacity onPress={() => removeAttachment(file.path)} style={styles.attachmentRemove}>
+                    <Ionicons name="close" size={11} color={theme.textSecondary} />
+                  </TouchableOpacity>
                 </View>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        ) : (
-          <View style={[styles.bottomBar, { paddingBottom: 12 + insets.bottom }]}>
-            {(attachedFiles.length > 0 || attachedImages.length > 0) && (
-              <ScrollView horizontal style={styles.attachmentsScroll} contentContainerStyle={styles.attachmentsScrollContent}>
-                {attachedFiles.map((file) => (
-                  <View key={file.path} style={styles.attachmentPill}>
-                    <Ionicons name="document-text-outline" size={11} color={theme.textSecondary} />
-                    <Text style={styles.attachmentText} numberOfLines={1}>{file.name}</Text>
-                    <TouchableOpacity onPress={() => removeAttachment(file.path)} style={styles.attachmentRemove}>
-                      <Ionicons name="close" size={11} color={theme.textSecondary} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-                {attachedImages.map((image) => (
-                  <View key={image.uri} style={styles.attachmentImageWrapper}>
-                    <Image source={{ uri: image.uri }} style={styles.attachmentImage} />
-                    <TouchableOpacity onPress={() => removeImageAttachment(image.uri)} style={styles.attachmentImageRemove}>
-                      <Ionicons name="close" size={10} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-
-            <View style={styles.inputRow}>
-              <TouchableOpacity onPress={() => setShowModelPicker(true)} style={styles.modelIconButton}>
-                <Ionicons name="sparkles" size={16} color={theme.accent} />
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => setShowAttachmentPicker(true)} style={styles.iconButtonSmall}>
-                <Ionicons name="attach" size={18} color={theme.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={pickImages} style={styles.iconButtonSmall}>
-                <Ionicons name="image-outline" size={18} color={theme.textSecondary} />
-              </TouchableOpacity>
-
-              <TextInput
-                style={styles.compactInput}
-                value={inputText}
-                onChangeText={setInputText}
-                placeholder="Ask anything..."
-                placeholderTextColor={theme.placeholder}
-                multiline
-                maxLength={4000}
-                textAlignVertical="top"
-                autoCapitalize="sentences"
-                autoCorrect
-                enablesReturnKeyAutomatically
-                keyboardAppearance={isDarkMode ? 'dark' : 'light'}
-                editable={!isTyping}
-              />
-
-              <View style={styles.inputActions}>
-                {isTyping ? (
-                  <TouchableOpacity
-                    onPress={stopGeneration}
-                    style={[styles.sendButtonCompact, styles.stopButton]}
-                  >
-                    <Ionicons name="stop" size={18} color="#fff" />
+              ))}
+              {attachedImages.map((image) => (
+                <View key={image.uri} style={styles.attachmentImageWrapper}>
+                  <Image source={{ uri: image.uri }} style={styles.attachmentImage} />
+                  <TouchableOpacity onPress={() => removeImageAttachment(image.uri)} style={styles.attachmentImageRemove}>
+                    <Ionicons name="close" size={10} color="#fff" />
                   </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={sendMessage}
-                    style={[styles.sendButtonCompact, inputText.trim() === '' && styles.sendButtonDisabled]}
-                    disabled={inputText.trim() === ''}
-                  >
-                    <Ionicons name="arrow-up" size={18} color={inputText.trim() ? '#fff' : theme.textSecondary} />
-                  </TouchableOpacity>
-                )}
-              </View>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          <View style={styles.inputRow}>
+            <TouchableOpacity onPress={() => setShowModelPicker(true)} style={styles.modelIconButton}>
+              <Ionicons name="sparkles" size={16} color={theme.accent} />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setShowAttachmentPicker(true)} style={styles.iconButtonSmall}>
+              <Ionicons name="attach" size={18} color={theme.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={pickImages} style={styles.iconButtonSmall}>
+              <Ionicons name="image-outline" size={18} color={theme.textSecondary} />
+            </TouchableOpacity>
+
+            <TextInput
+              style={styles.compactInput}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder="Ask anything..."
+              placeholderTextColor={theme.placeholder}
+              multiline
+              maxLength={4000}
+              textAlignVertical="top"
+              autoCapitalize="sentences"
+              autoCorrect
+              enablesReturnKeyAutomatically
+              keyboardAppearance={isDarkMode ? 'dark' : 'light'}
+              editable={!isTyping}
+            />
+
+            <View style={styles.inputActions}>
+              {isTyping ? (
+                <TouchableOpacity
+                  onPress={stopGeneration}
+                  style={[styles.sendButtonCompact, styles.stopButton]}
+                >
+                  <Ionicons name="stop" size={18} color="#fff" />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={sendMessage}
+                  style={[styles.sendButtonCompact, inputText.trim() === '' && styles.sendButtonDisabled]}
+                  disabled={inputText.trim() === ''}
+                >
+                  <Ionicons name="arrow-up" size={18} color={inputText.trim() ? '#fff' : theme.textSecondary} />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
-        )}
+        </View>
+      </View>
 
         {/* Compact model picker modal */}
         <Modal visible={showModelPicker} transparent animationType="fade">
