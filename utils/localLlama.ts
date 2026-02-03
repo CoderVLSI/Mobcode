@@ -21,11 +21,22 @@ export const LOCAL_MODEL_URL =
   'https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf';
 
 const getBaseDir = () => {
-  const baseDir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
-  if (!baseDir) {
-    throw new Error('No writable directory available on this device.');
+  // Try multiple fallback paths for different environments
+  const possibleDirs = [
+    FileSystem.documentDirectory,
+    FileSystem.cacheDirectory,
+    '/data/user/0/com.indiccoder.cursorchat/files/',
+    '/storage/emulated/0/Android/data/com.indiccoder.cursorchat/files/',
+  ];
+
+  for (const dir of possibleDirs) {
+    if (dir) {
+      console.log('Using base directory:', dir);
+      return dir;
+    }
   }
-  return baseDir;
+
+  throw new Error('No writable directory available. Please check app permissions or use a cloud model instead.');
 };
 
 const getModelDir = () => `${getBaseDir()}models/`;
@@ -46,7 +57,21 @@ let llamaContext: any = null;
 let initPromise: Promise<any> | null = null;
 
 const ensureModelDir = async () => {
-  await FileSystem.makeDirectoryAsync(getModelDir(), { intermediates: true });
+  const modelDir = getModelDir();
+  console.log('Ensuring model directory exists:', modelDir);
+
+  try {
+    // Check if directory exists first
+    const info = await FileSystem.getInfoAsync(modelDir);
+    if (!info.exists) {
+      console.log('Creating models directory...');
+      await FileSystem.makeDirectoryAsync(modelDir, { intermediates: true, idempotent: true });
+    }
+    console.log('Model directory ready:', modelDir);
+  } catch (error) {
+    console.error('Failed to create model directory:', error);
+    throw new Error(`Cannot create models directory: ${(error as Error).message}`);
+  }
 };
 
 export const getLocalModelPath = () => `${getModelDir()}${LOCAL_MODEL_FILENAME}`;
