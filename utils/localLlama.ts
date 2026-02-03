@@ -143,20 +143,32 @@ export const getLocalLlamaContext = async () => {
 
       try {
         // llama.rn requires file:// prefix for local paths
-        const modelPath = info.uri.startsWith('file://') ? info.uri : `file://${info.uri}`;
+        let modelPath = info.uri;
+        if (!modelPath.startsWith('file://')) {
+          modelPath = `file://${modelPath}`;
+        }
+
+        console.log('Initializing llama.rn with model:', modelPath);
+
+        // Use llamaContext directly if initLlama is not available
+        if (!initLlama || typeof initLlama !== 'function') {
+          throw new Error('llama.rn initLlama function is not available. The module may not be properly linked.');
+        }
 
         llamaContext = await initLlama({
           model: modelPath,
           use_mlock: false,
           n_ctx: 2048,
           n_gpu_layers: 0, // Use CPU only
+          n_threads: 4, // Use 4 threads for better performance
         });
 
         console.log('Llama context initialized successfully');
         return llamaContext;
       } catch (error) {
         console.error('Failed to initialize llama.rn:', error);
-        throw new Error(`Llama initialization failed: ${(error as Error).message}`);
+        console.error('Error details:', JSON.stringify(error));
+        throw new Error(`Llama initialization failed: ${(error as Error).message}. Please ensure you are using the EAS build, not Expo Go.`);
       }
     })().catch((error) => {
       initPromise = null;
