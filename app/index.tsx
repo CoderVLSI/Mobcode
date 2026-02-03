@@ -12,7 +12,7 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme, Theme } from '../context/ThemeContext';
@@ -49,6 +49,7 @@ import { previewBus, PreviewRequest } from '../utils/previewBus';
 export default function ChatScreen() {
   const { theme, isDarkMode, toggleTheme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
@@ -563,8 +564,10 @@ export default function ChatScreen() {
       ],
       async (step, allSteps) => {
         // Progress callback - update task tracker
-        setAgentSteps([...allSteps]);
-        setCurrentGoal(allSteps.length > 0 ? 'Processing tasks...' : inputText.trim());
+        // Filter out the 'plan' metadata step - only show actual tool steps
+        const toolSteps = allSteps.filter(s => s.tool !== 'plan');
+        setAgentSteps(toolSteps);
+        setCurrentGoal(toolSteps.length > 0 ? 'Processing tasks...' : inputText.trim());
 
         // Don't add progress messages to chat - keep it clean
         // Progress is shown in the task tracker badge instead
@@ -609,6 +612,9 @@ export default function ChatScreen() {
     console.log('Agent result:', result);
     console.log('Agent plan:', result.plan);
     console.log('Has conversational response:', !!result.plan?.conversationalResponse);
+
+    // Clear agent steps after completion
+    setAgentSteps([]);
 
     // Store the goal for task tracker
     if (result.plan?.goal) {
@@ -873,7 +879,7 @@ export default function ChatScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: 12 + insets.bottom }]}>
           {(attachedFiles.length > 0 || attachedImages.length > 0) && (
             <ScrollView horizontal style={styles.attachmentsScroll} contentContainerStyle={styles.attachmentsScrollContent}>
               {attachedFiles.map((file) => (

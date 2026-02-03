@@ -58,7 +58,20 @@ class MCPClient {
         }),
       });
 
-      const data = await response.json();
+      // Check if response is OK before parsing JSON
+      if (!response.ok) {
+        throw new Error(`MCP server returned ${response.status}: ${response.statusText}`);
+      }
+
+      // Get response text first to handle potential JSON parse errors
+      const text = await response.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        throw new Error(`Invalid JSON response from MCP server: ${text.substring(0, 200)}`);
+      }
 
       if (data.error) {
         throw new Error(data.error.message);
@@ -76,7 +89,17 @@ class MCPClient {
         }),
       });
 
-      const toolsData = await toolsResponse.json();
+      if (!toolsResponse.ok) {
+        throw new Error(`MCP tools list returned ${toolsResponse.status}: ${toolsResponse.statusText}`);
+      }
+
+      const toolsText = await toolsResponse.text();
+      let toolsData;
+      try {
+        toolsData = JSON.parse(toolsText);
+      } catch (parseError) {
+        throw new Error(`Invalid JSON in tools list: ${toolsText.substring(0, 200)}`);
+      }
       const tools = toolsData.result?.tools || [];
 
       this.servers.set(name, {
@@ -146,7 +169,25 @@ class MCPClient {
         }),
       });
 
-      const data = await response.json();
+      if (!response.ok) {
+        return {
+          success: false,
+          output: null,
+          error: `MCP tool call returned ${response.status}: ${response.statusText}`,
+        };
+      }
+
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        return {
+          success: false,
+          output: null,
+          error: `Invalid JSON from MCP tool: ${text.substring(0, 200)}`,
+        };
+      }
 
       if (data.error) {
         return {
