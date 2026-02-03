@@ -1042,7 +1042,6 @@ export default function ChatScreen() {
             </View>
           </View>
         </Modal>
-      </View>
       </SafeAreaView>
 
       <ChatHistory
