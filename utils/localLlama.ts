@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { AIMessage, AIResponse } from './aiService';
 
 // Conditional import for llama.rn (only available in dev builds, not Expo Go)
