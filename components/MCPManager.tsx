@@ -120,56 +120,16 @@ export function MCPManager({ visible, onClose }: MCPManagerProps) {
                 onPress={() => handleAddPreset('context7')}
               >
                 <Ionicons name="book" size={24} color={theme.accent} />
-                <Text style={styles.presetText}>Docs</Text>
+                <Text style={styles.presetText}>Context7</Text>
+                <Text style={styles.presetSubtext}>Library Docs</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.presetButton}
                 onPress={() => handleAddPreset('exa-search')}
               >
                 <Ionicons name="rocket" size={24} color={theme.accent} />
-                <Text style={styles.presetText}>Exa</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetButton}
-                onPress={() => handleAddPreset('filesystem')}
-              >
-                <Ionicons name="folder" size={24} color={theme.accent} />
-                <Text style={styles.presetText}>Filesystem</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetButton}
-                onPress={() => handleAddPreset('github')}
-              >
-                <Ionicons name="logo-github" size={24} color={theme.accent} />
-                <Text style={styles.presetText}>GitHub</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetButton}
-                onPress={() => handleAddPreset('brave-search')}
-              >
-                <Ionicons name="search" size={24} color={theme.accent} />
-                <Text style={styles.presetText}>Search</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetButton}
-                onPress={() => handleAddPreset('sequential-thinking')}
-              >
-                <Ionicons name="brain" size={24} color={theme.accent} />
-                <Text style={styles.presetText}>Thinking</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetButton}
-                onPress={() => handleAddPreset('fetch')}
-              >
-                <Ionicons name="globe" size={24} color={theme.accent} />
-                <Text style={styles.presetText}>Fetch</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetButton}
-                onPress={() => handleAddPreset('puppeteer')}
-              >
-                <Ionicons name="code-slash" size={24} color={theme.accent} />
-                <Text style={styles.presetText}>Browser</Text>
+                <Text style={styles.presetText}>Exa Search</Text>
+                <Text style={styles.presetSubtext}>Web Search</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -325,22 +285,28 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   presetGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 16,
   },
   presetButton: {
-    width: '45%',
-    aspectRatio: 1.5,
+    width: '100%',
+    aspectRatio: 2.5,
     backgroundColor: theme.surface,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 4,
   },
   presetText: {
     fontSize: 12,
     color: theme.text,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  presetSubtext: {
+    fontSize: 10,
+    color: theme.textSecondary,
     textAlign: 'center',
   },
   emptyState: {

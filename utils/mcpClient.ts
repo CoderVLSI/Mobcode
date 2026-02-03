@@ -208,19 +208,9 @@ class MCPClient {
    */
   async addPresetServer(preset: string): Promise<void> {
     const presets: Record<string, string> = {
-      // Public HTTP MCP Servers (work directly)
+      // Public HTTP MCP Servers
       'context7': 'https://mcp.context7.com/mcp',
       'exa-search': 'https://mcp.exa.ai/mcp',
-
-      // Popular MCP Servers (require local HTTP proxy or npx)
-      'filesystem': 'http://localhost:3000/mcp',
-      'github': 'http://localhost:3001/mcp',
-      'brave-search': 'http://localhost:3002/mcp',
-      'sequential-thinking': 'http://localhost:3003/mcp',
-      'fetch': 'http://localhost:3004/mcp',
-      'puppeteer': 'http://localhost:3005/mcp',
-      'redis': 'http://localhost:3006/mcp',
-      'sqlite': 'http://localhost:3007/mcp',
     };
 
     const url = presets[preset];
