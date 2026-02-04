@@ -159,6 +159,61 @@ class AutonomousAgent {
       console.log('Completed:', completed);
       console.log('Failed:', failed);
 
+      // Check if we need follow-up planning (iterative agent loop)
+      // Only do this if we completed listing operations without delete/write
+      const hasListOnly = plan.steps.every(s => s.tool === 'list_directory' || s.tool === 'search_files' || s.tool === 'find_files');
+      const userWantsAction = /delete|remove|create|write|make|add|update|modify/i.test(userRequest);
+
+      if (hasListOnly && userWantsAction && completed > 0 && failed === 0) {
+        console.log('=== FOLLOW-UP PLANNING (iterative loop) ===');
+
+        // Collect tool results to pass as context
+        const toolResults = plan.steps
+          .filter(s => s.status === 'completed' && s.result?.output)
+          .map(s => `${s.description}:\n${s.result?.output?.substring(0, 500)}`)
+          .join('\n\n');
+
+        if (toolResults) {
+          console.log('Tool results for context:', toolResults.substring(0, 300));
+
+          // Create follow-up prompt with context
+          const followUpPrompt = `Based on the results below, now complete the user's original request: "${userRequest}"
+
+Tool Results:
+${toolResults}
+
+Now create the next steps to actually complete the task (e.g., delete/create the files found).`;
+
+          try {
+            const followUpPlan = await this.createPlan(
+              followUpPrompt,
+              availableTools,
+              model,
+              customModels,
+              apiKey,
+              hfApiKey,
+              geminiApiKey,
+              onStream,
+              [...history, { role: 'user', content: userRequest }, { role: 'assistant', content: toolResults }]
+            );
+
+            if (followUpPlan.steps.length > 0) {
+              console.log('Follow-up plan created with', followUpPlan.steps.length, 'steps');
+
+              // Execute follow-up steps
+              for (const step of followUpPlan.steps) {
+                await executeStep(step);
+              }
+
+              // Add follow-up steps to main plan for reporting
+              plan.steps.push(...followUpPlan.steps);
+            }
+          } catch (e) {
+            console.error('Follow-up planning failed:', e);
+          }
+        }
+      }
+
       // Update background task with final step states
       backgroundTaskManager.updateTask({
         agentSteps: [...plan.steps],
@@ -416,8 +471,26 @@ For chat: respond naturally. For tasks: respond with ONLY the JSON, no extra tex
     const fixGLMJSON = (json: string): string => {
       let result = '';
 
-      // First, fix empty string keys
-      let fixed = json;
+      // First, strip markdown code blocks (```json ... ```)
+      let fixed = json.trim();
+      if (fixed.startsWith('```json')) {
+        fixed = fixed.slice(7); // Remove ```json
+      } else if (fixed.startsWith('```')) {
+        fixed = fixed.slice(3); // Remove ```
+      }
+      if (fixed.endsWith('```')) {
+        fixed = fixed.slice(0, -3); // Remove trailing ```
+      }
+      fixed = fixed.trim();
+
+      // CRITICAL FIX: If JSON doesn't start with {, add it
+      // GLM sometimes outputs: "goal": "...", "steps": [...] instead of {"goal": "...", "steps": [...]}
+      if (!fixed.startsWith('{')) {
+        console.log('[GLM Fix] JSON missing opening brace, adding it');
+        fixed = '{' + fixed;
+      }
+
+      // Fix empty string keys
       fixed = fixed.replace(/""\s*:\s*\[/g, '"steps": [');
       fixed = fixed.replace(/""\s*:\s*\{/g, '"parameters": {');
 

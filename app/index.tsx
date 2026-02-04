@@ -316,14 +316,7 @@ export default function ChatScreen() {
     const newChat: Chat = {
       id: Date.now().toString(),
       title: 'New Chat',
-      messages: [
-        {
-          id: '1',
-          role: 'assistant',
-          content: "Hello! I'm your AI assistant. How can I help you today?",
-          timestamp: new Date(),
-        },
-      ],
+      messages: [],
       model: selectedModel,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -638,6 +631,8 @@ export default function ChatScreen() {
         .slice(0, -1)
         .filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.approval)
         .filter((m) => m.content && !m.id.startsWith('progress-'))
+        // Filter out error messages that pollute context
+        .filter((m) => !m.content.includes('"error"') && !m.content.includes('RESOURCE_EXHAUSTED'))
         .slice(-8)  // History limit for agent context
         .map((m) => ({
           role: m.role,
