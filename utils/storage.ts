@@ -17,6 +17,7 @@ export interface Message {
   codeDiff?: CodeDiff;
   approval?: ApprovalRequest;
   attachments?: MessageAttachment[];
+  gitCheckpointHash?: string; // Git commit hash for checkpoint/rewind feature
 }
 
 export interface ApprovalRequest {

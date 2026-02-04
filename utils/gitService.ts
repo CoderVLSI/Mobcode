@@ -218,4 +218,71 @@ export const gitService = {
   async getSettings(): Promise<GitSettings> {
     return storage.getGitSettings();
   },
+
+  /**
+   * Create a checkpoint by committing all current changes
+   * Returns the commit hash (oid) or null if no changes/no repo
+   */
+  async createCheckpoint(message: string): Promise<string | null> {
+    try {
+      const dir = getDir();
+      const gitDir = `${dir}/.git`;
+      const exists = await fileManager.fileExists(gitDir);
+      if (!exists) return null;
+
+      // Check if there are any changes to commit
+      const matrix = await git.statusMatrix({ fs: gitFs, dir });
+      const hasChanges = matrix.some((row) => {
+        const [, head, workdir, stage] = row as [string, number, number, number];
+        return !(head === 1 && workdir === 1 && stage === 1);
+      });
+
+      if (!hasChanges) return null;
+
+      // Stage all changes
+      for (const row of matrix) {
+        const [filepath, head, workdir] = row as [string, number, number, number];
+        if (head === 1 && workdir === 1) continue; // unchanged
+        if (workdir === 0 && head !== 0) {
+          await git.remove({ fs: gitFs, dir, filepath });
+        } else {
+          await git.add({ fs: gitFs, dir, filepath });
+        }
+      }
+
+      // Commit
+      const author = await getAuthor({});
+      const oid = await git.commit({ fs: gitFs, dir, message, author });
+      console.log(`[GitCheckpoint] Created checkpoint: ${oid.slice(0, 7)}`);
+      return oid;
+    } catch (error) {
+      console.error('[GitCheckpoint] Failed to create checkpoint:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Reset to a specific checkpoint (commit hash)
+   * Uses hard reset to restore all files to that state
+   */
+  async resetToCheckpoint(commitHash: string): Promise<boolean> {
+    try {
+      const dir = getDir();
+      await ensureRepoExists();
+
+      // Checkout the commit (detach HEAD)
+      await git.checkout({
+        fs: gitFs,
+        dir,
+        ref: commitHash,
+        force: true,
+      });
+
+      console.log(`[GitCheckpoint] Reset to checkpoint: ${commitHash.slice(0, 7)}`);
+      return true;
+    } catch (error) {
+      console.error('[GitCheckpoint] Failed to reset:', error);
+      return false;
+    }
+  },
 };
