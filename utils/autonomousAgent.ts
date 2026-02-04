@@ -426,17 +426,27 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
 
     // Helper function to fix common GLM JSON issues
     const fixGLMJSON = (json: string): string => {
-      // Fix empty string keys that GLM sometimes generates
-      let fixed = json
-        // Replace `"": [` with `"steps": [`
-        .replace(/""\s*:\s*\[/g, '"steps": [')
-        // Replace `"": {}` with `"parameters": {}`
-        .replace(/""\s*:\s*\{/g, '"parameters": {')
-        // Fix missing colons after property names (e.g., `description "text` → `description": "text`)
-        .replace(/"([a-zA-Z_][a-zA-Z0-9_]*)"\s+"([^"]*)"/g, '"$1": "$2"')
-        // Fix trailing commas
-        .replace(/,\s*}/g, '}')
-        .replace(/,\s*]/g, ']');
+      let fixed = json;
+
+      // Fix 1: Empty string keys → proper keys
+      fixed = fixed.replace(/""\s*:\s*\[/g, '"steps": [');
+      fixed = fixed.replace(/""\s*:\s*\{/g, '"parameters": {');
+
+      // Fix 2: Unquoted property names ONLY (not already quoted)
+      // Pattern: `path:` or `path :` → `"path":` but NOT `"path":`
+      fixed = fixed.replace(/([^\w"])(\w+)\s*:/g, '$1"$2":');
+
+      // Fix 3: Missing quotes around string values after colons (when unquoted)
+      // Pattern: `"path": value` → `"path": "value"` (only if value isn't quoted/bracket)
+      fixed = fixed.replace(/:\s*([a-zA-Z0-9_\/\-.][^",}\]]*)([,\}])/g, ': "$1"$2');
+
+      // Fix 4: Extra spaces (but keep newlines for readability)
+      fixed = fixed.replace(/  +/g, ' ');
+
+      // Fix 5: Trailing commas
+      fixed = fixed.replace(/,\s*}/g, '}');
+      fixed = fixed.replace(/,\s*]/g, ']');
+
       return fixed;
     };
 
