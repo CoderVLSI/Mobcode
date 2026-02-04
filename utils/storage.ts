@@ -81,6 +81,8 @@ const GLM_KEY_KEY = '@cursor_glm_key';
 const GIT_SETTINGS_KEY = '@cursor_git_settings';
 const REMOTE_SKILLS_KEY = '@mobcode_remote_skills';
 const REMOTE_SKILLS_SYNC_KEY = '@mobcode_remote_skills_sync_time';
+const OPENROUTER_KEY_KEY = '@cursor_openrouter_key';
+const OPENROUTER_MODELS_KEY = '@mobcode_openrouter_models';
 
 export const storage = {
   // Get all chats
@@ -409,6 +411,47 @@ export const storage = {
       await AsyncStorage.setItem(REMOTE_SKILLS_SYNC_KEY, timestamp.toString());
     } catch (error) {
       console.error('Error saving remote skills sync time:', error);
+    }
+  },
+
+  // Get OpenRouter API key
+  async getOpenRouterKey(): Promise<string> {
+    try {
+      const key = await AsyncStorage.getItem(OPENROUTER_KEY_KEY);
+      return key || '';
+    } catch (error) {
+      console.error('Error getting OpenRouter key:', error);
+      return '';
+    }
+  },
+
+  // Set OpenRouter API key
+  async setOpenRouterKey(key: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem(OPENROUTER_KEY_KEY, key);
+    } catch (error) {
+      console.error('Error setting OpenRouter key:', error);
+    }
+  },
+
+  // Get cached OpenRouter models
+  async getOpenRouterModels(): Promise<any[]> {
+    try {
+      const data = await AsyncStorage.getItem(OPENROUTER_MODELS_KEY);
+      if (!data) return [];
+      return JSON.parse(data);
+    } catch (error) {
+      console.error('Error getting cached OpenRouter models:', error);
+      return [];
+    }
+  },
+
+  // Save cached OpenRouter models
+  async setOpenRouterModels(models: any[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(OPENROUTER_MODELS_KEY, JSON.stringify(models));
+    } catch (error) {
+      console.error('Error saving OpenRouter models:', error);
     }
   },
 };

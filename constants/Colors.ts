@@ -1,21 +1,21 @@
 export const Colors = {
-  // Dark mode colors (Cursor/VS Code Theme)
-  background: '#181818', // Main editor background
-  surface: '#202020', // Sidebar/Panel background
-  surfaceHover: '#2a2d2e',
+  // Dark mode colors (Geist/Vercel Design)
+  background: '#0a0a0a', // Deep black
+  surface: '#111111', // Slightly lighter for panels
+  surfaceHover: '#1a1a1a',
   border: '#333333',
-  text: '#e0e0e0', // Main text
-  textSecondary: '#858585', // Muted text
+  text: '#ededed', // High contrast
+  textSecondary: '#888888', // Muted
   textDark: '#000000',
-  accent: '#3794ff', // Cursor Blue
-  accentHover: '#1e90ff',
-  success: '#4ec9b0',
-  error: '#f48771',
-  warning: '#cca700',
-  userMessage: 'transparent', // No bubble background
-  assistantMessage: 'transparent', // No bubble background
-  inputBackground: '#2b2b2b', // Input box background
-  placeholder: '#6e6e6e',
+  accent: '#3291ff', // Vercel Blue (Dark Mode)
+  accentHover: '#0070f3',
+  success: '#0070f3', // Use accent as success for now or specific green
+  error: '#e00000', // Geist Error red
+  warning: '#f5a623',
+  userMessage: 'transparent',
+  assistantMessage: 'transparent',
+  inputBackground: '#111111',
+  placeholder: '#444444',
 };
 
 export const LightColors = {

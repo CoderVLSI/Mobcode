@@ -69,4 +69,32 @@ export const AI_MODELS = [
     icon: 'flash-outline',
     description: 'Fast and cost-effective',
   },
+  {
+    id: 'openrouter/google/gemma-3-1b-it',
+    name: 'Gemma 3 1B',
+    provider: 'Google (OR)',
+    icon: 'logo-google',
+    description: 'Lightweight multimodal model',
+  },
+  {
+    id: 'openrouter/openai/gpt-oss-20b',
+    name: 'GPT-OSS 20B',
+    provider: 'OpenAI (OR)',
+    icon: 'logo-github',
+    description: 'Open-weight MoE model',
+  },
+  {
+    id: 'openrouter/deepseek/deepseek-r1',
+    name: 'DeepSeek R1',
+    provider: 'DeepSeek (OR)',
+    icon: 'code-working',
+    description: 'Powerful reasoning model',
+  },
+  {
+    id: 'openrouter/google/gemini-2.0-flash-exp:free',
+    name: 'Gemini 2.0 Flash Free',
+    provider: 'Google (OR)',
+    icon: 'flash',
+    description: 'Free experimental model',
+  },
 ];

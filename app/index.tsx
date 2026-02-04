@@ -98,6 +98,7 @@ export default function ChatScreen() {
   const [previewComponentId, setPreviewComponentId] = useState<string | null>(null);
   const [showSkillsManager, setShowSkillsManager] = useState(false);
   const [showCodeArena, setShowCodeArena] = useState(false);
+  const [openRouterKey, setOpenRouterKey] = useState('');
   const scrollViewRef = useRef<ScrollView>(null);
   const approvalResolverRef = useRef<((value: boolean) => void) | null>(null);
   const messageCounterRef = useRef(0);
@@ -230,6 +231,8 @@ export default function ChatScreen() {
     setGeminiKey(geminiKey);
     const glmKey = await storage.getGlmKey();
     setGlmKey(glmKey);
+    const orKey = await storage.getOpenRouterKey();
+    setOpenRouterKey(orKey);
 
     await refreshLocalModelInfo();
     await ensureSampleWebsite();
@@ -1153,6 +1156,7 @@ export default function ChatScreen() {
         anthropicKey={anthropicKey}
         geminiKey={geminiKey}
         glmKey={glmKey}
+        openRouterKey={openRouterKey}
       />
 
       <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
@@ -1291,6 +1295,39 @@ export default function ChatScreen() {
                     onPress={async () => {
                       await storage.setGeminiKey(geminiKey);
                       Alert.alert('Success', 'Gemini API key saved');
+                    }}
+                  >
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.settingSection}>
+                <Text style={styles.sectionTitle}>OpenRouter API</Text>
+                <View style={styles.settingItem}>
+                  <Ionicons name="globe-outline" size={20} color={theme.accent} />
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingLabel}>OpenRouter Key</Text>
+                    <Text style={styles.settingValue}>
+                      {openRouterKey ? '••••' + openRouterKey.slice(-4) : 'Not set'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.apiInputContainer}>
+                  <TextInput
+                    style={styles.apiInput}
+                    value={openRouterKey}
+                    onChangeText={setOpenRouterKey}
+                    placeholder="sk-or-..."
+                    placeholderTextColor={theme.placeholder}
+                    secureTextEntry
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={styles.saveButton}
+                    onPress={async () => {
+                      await storage.setOpenRouterKey(openRouterKey);
+                      Alert.alert('Success', 'OpenRouter key saved');
                     }}
                   >
                     <Text style={styles.saveButtonText}>Save</Text>
@@ -2214,8 +2251,8 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     backgroundColor: theme.inputBackground,
     borderWidth: 1,
     borderColor: theme.border,
-    borderRadius: 20,
-    paddingHorizontal: 8,
+    borderRadius: 8,
+    paddingHorizontal: 8, // Tighter input
     paddingVertical: 6,
     gap: 6,
   },
@@ -2449,11 +2486,12 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: theme.text,
-    opacity: 0.9,
+    opacity: 0.7,
   },
   messageContent: {
     fontSize: 14,
-    lineHeight: 22,
+    lineHeight: 24, // Better readability
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto', // Ensure good font
     color: theme.text,
   },
   approvalCard: {

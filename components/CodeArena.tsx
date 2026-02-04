@@ -214,48 +214,47 @@ export function CodeArena({
                     onPress={() => setShowPicker(false)}
                 >
                     <View style={styles.pickerContent}>
-                        <View style={styles.pickerContent}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                                <Text style={styles.pickerTitle}>Select {label}</Text>
-                                {openRouterKey && (
-                                    <TouchableOpacity onPress={refreshRemoteModels} disabled={isRefreshingModels}>
-                                        {isRefreshingModels ?
-                                            <ActivityIndicator size="small" color={theme.accent} /> :
-                                            <Ionicons name="refresh" size={20} color={theme.textSecondary} />
-                                        }
-                                    </TouchableOpacity>
-                                )}
-                            </View>
-                            <ScrollView style={styles.pickerList}>
-                                {allModels.map(model => (
-                                    <TouchableOpacity
-                                        key={model.id}
-                                        style={[
-                                            styles.pickerOption,
-                                            currentModel === model.id && styles.pickerOptionSelected,
-                                        ]}
-                                        onPress={() => {
-                                            onSelect(model.id);
-                                            setShowPicker(false);
-                                        }}
-                                    >
-                                        <Ionicons
-                                            name={model.icon as any}
-                                            size={18}
-                                            color={currentModel === model.id ? theme.accent : theme.text}
-                                        />
-                                        <Text
-                                            style={[
-                                                styles.pickerOptionText,
-                                                currentModel === model.id && { color: theme.accent },
-                                            ]}
-                                        >
-                                            {model.name}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </ScrollView>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                            <Text style={styles.pickerTitle}>Select {label}</Text>
+                            {openRouterKey && (
+                                <TouchableOpacity onPress={refreshRemoteModels} disabled={isRefreshingModels}>
+                                    {isRefreshingModels ?
+                                        <ActivityIndicator size="small" color={theme.accent} /> :
+                                        <Ionicons name="refresh" size={20} color={theme.textSecondary} />
+                                    }
+                                </TouchableOpacity>
+                            )}
                         </View>
+                        <ScrollView style={styles.pickerList}>
+                            {allModels.map(model => (
+                                <TouchableOpacity
+                                    key={model.id}
+                                    style={[
+                                        styles.pickerOption,
+                                        currentModel === model.id && styles.pickerOptionSelected,
+                                    ]}
+                                    onPress={() => {
+                                        onSelect(model.id);
+                                        setShowPicker(false);
+                                    }}
+                                >
+                                    <Ionicons
+                                        name={model.icon as any}
+                                        size={18}
+                                        color={currentModel === model.id ? theme.accent : theme.text}
+                                    />
+                                    <Text
+                                        style={[
+                                            styles.pickerOptionText,
+                                            currentModel === model.id && { color: theme.accent },
+                                        ]}
+                                    >
+                                        {model.name}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
                 </TouchableOpacity>
             </Modal>
         </View>
