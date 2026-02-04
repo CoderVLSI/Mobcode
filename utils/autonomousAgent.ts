@@ -379,78 +379,75 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
         console.log('JSON pattern found, attempting to parse...');
         const jsonStr = jsonMatch[0];
 
-        // Check if JSON is truncated (doesn't properly close)
-        const trimmed = jsonStr.trim();
-        const openBraces = (jsonStr.match(/{/g) || []).length;
-        const closeBraces = (jsonStr.match(/}/g) || []).length;
-        const openBrackets = (jsonStr.match(/\[/g) || []).length;
-        const closeBrackets = (jsonStr.match(/]/g) || []).length;
-
-        // JSON is truncated if braces/brackets don't match
-        const isTruncated = openBraces !== closeBraces || openBrackets !== closeBrackets;
-
-        if (isTruncated) {
-          console.warn('JSON appears to be truncated/cutoff');
-          console.warn('This usually means the response hit the token limit');
-          console.warn(`Braces: ${openBraces} open, ${closeBraces} close`);
-          console.warn(`Brackets: ${openBrackets} open, ${closeBrackets} close`);
-          // Return friendly error message instead of trying to parse
-          conversationalResponse = "I apologize, but my response was cut off due to length limits. Could you please break this task into smaller parts? For example, instead of asking to create everything at once, ask me to create one file at a time.";
-          return {
-            id: Date.now().toString(),
-            goal: userRequest,
-            steps: [],
-            estimatedSteps: 0,
-            requiresApproval: [],
-            conversationalResponse,
-          };
-        }
-
-        const parsed = JSON.parse(jsonStr);
-        if (parsed && Array.isArray(parsed.steps)) {
-          planData = parsed;
-          console.log('Plan parsed successfully');
-          console.log('Steps in plan:', parsed.steps.length);
-          parsed.steps.forEach((s: any, i: number) => {
-            console.log(`  Step ${i + 1}:`, s.description, '| Tool:', s.tool);
-          });
-        } else {
-          console.log('JSON parsed but not a valid plan structure');
-          console.log('Parsed object keys:', Object.keys(parsed));
-
-          // Try to extract meaningful content from the parsed JSON
-          // The AI might have responded with a different structure
-          let extractedResponse = '';
-
-          // Check common response patterns
-          if (parsed.response) extractedResponse = parsed.response;
-          else if (parsed.message) extractedResponse = parsed.message;
-          else if (parsed.content) extractedResponse = parsed.content;
-          else if (parsed.text) extractedResponse = parsed.text;
-          else if (parsed.answer) extractedResponse = parsed.answer;
-          else if (typeof parsed === 'string') extractedResponse = parsed;
-
-          // If we found something in the JSON, use it
-          if (extractedResponse) {
-            conversationalResponse = extractedResponse;
+        // Try to parse the JSON first
+        try {
+          const parsed = JSON.parse(jsonStr);
+          if (parsed && Array.isArray(parsed.steps)) {
+            planData = parsed;
+            console.log('Plan parsed successfully');
+            console.log('Steps in plan:', parsed.steps.length);
+            parsed.steps.forEach((s: any, i: number) => {
+              console.log(`  Step ${i + 1}:`, s.description, '| Tool:', s.tool);
+            });
           } else {
-            // Check for text before the JSON
-            const jsonIndex = fullContent.indexOf(jsonMatch[0]);
-            const textBefore = jsonIndex > 0 ? fullContent.substring(0, jsonIndex).trim() : '';
-            const textAfter = fullContent.substring(jsonIndex + jsonMatch[0].length).trim();
+            console.log('JSON parsed but not a valid plan structure');
+            console.log('Parsed object keys:', Object.keys(parsed));
 
-            // Use text before/after JSON, or stringify the JSON for debugging
-            if (textBefore) {
-              conversationalResponse = textBefore;
-            } else if (textAfter) {
-              conversationalResponse = textAfter;
+            // Try to extract meaningful content from the parsed JSON
+            // The AI might have responded with a different structure
+            let extractedResponse = '';
+
+            // Check common response patterns
+            if (parsed.response) extractedResponse = parsed.response;
+            else if (parsed.message) extractedResponse = parsed.message;
+            else if (parsed.content) extractedResponse = parsed.content;
+            else if (parsed.text) extractedResponse = parsed.text;
+            else if (parsed.answer) extractedResponse = parsed.answer;
+            else if (typeof parsed === 'string') extractedResponse = parsed;
+
+            // If we found something in the JSON, use it
+            if (extractedResponse) {
+              conversationalResponse = extractedResponse;
             } else {
-              // Last resort - the full content without trying to parse as plan
-              conversationalResponse = fullContent;
+              // Check for text before the JSON
+              const jsonIndex = fullContent.indexOf(jsonMatch[0]);
+              const textBefore = jsonIndex > 0 ? fullContent.substring(0, jsonIndex).trim() : '';
+              const textAfter = fullContent.substring(jsonIndex + jsonMatch[0].length).trim();
+
+              // Use text before/after JSON, or stringify the JSON for debugging
+              if (textBefore) {
+                conversationalResponse = textBefore;
+              } else if (textAfter) {
+                conversationalResponse = textAfter;
+              } else {
+                // Last resort - the full content without trying to parse as plan
+                conversationalResponse = fullContent;
+              }
             }
+
+            console.log('Extracted conversational response length:', conversationalResponse.length);
+            return {
+              id: Date.now().toString(),
+              goal: userRequest,
+              steps: [],
+              estimatedSteps: 0,
+              requiresApproval: [],
+              conversationalResponse,
+            };
+          }
+        } catch (innerError) {
+          // JSON.parse failed - this usually means malformed JSON
+          console.warn('JSON parsing failed:', (innerError as Error).message);
+          // Extract text before the JSON as the response
+          const jsonIndex = fullContent.indexOf(jsonMatch[0]);
+          const textBefore = jsonIndex > 0 ? fullContent.substring(0, jsonIndex).trim() : '';
+
+          if (textBefore) {
+            conversationalResponse = textBefore;
+          } else {
+            conversationalResponse = "I apologize, but my response was cut off due to length limits. Could you please break this task into smaller parts? Try asking me to work on one file or feature at a time.";
           }
 
-          console.log('Extracted conversational response length:', conversationalResponse.length);
           return {
             id: Date.now().toString(),
             goal: userRequest,
@@ -475,26 +472,14 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
         };
       }
     } catch (e) {
-      console.error('Failed to parse AI response:', e);
-      console.error('Response content:', fullContent.substring(0, 500));
-      // If parsing fails, try to extract conversational part (before any JSON-like content)
-      const jsonStartIndex = fullContent.indexOf('{');
-      const conversationalPart = jsonStartIndex > 0 ? fullContent.substring(0, jsonStartIndex).trim() : fullContent;
-
-      // Check if response appears truncated
-      if (conversationalPart.length > 20000 || fullContent.includes('...')) {
-        conversationalResponse = "I apologize, but my response was cut off due to length limits. Could you please break this task into smaller parts? Try asking me to work on one file or feature at a time.";
-      } else {
-        conversationalResponse = conversationalPart || 'I understand. Let me help you with that.';
-      }
-
+      console.error('Unexpected error in createPlan:', e);
       return {
         id: Date.now().toString(),
         goal: userRequest,
         steps: [],
         estimatedSteps: 0,
         requiresApproval: [],
-        conversationalResponse,
+        conversationalResponse: 'Sorry, I encountered an error processing the response.',
       };
     }
 
