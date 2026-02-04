@@ -10,7 +10,6 @@
       "**/*"
     ],
     "newArchEnabled": true,
-    "newArchEnabled": true,
     "plugins": [],
     "ios": {
       "supportsTablet": true,

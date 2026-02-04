@@ -12,6 +12,7 @@ import {
   Alert,
   Modal,
   Animated,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,6 +27,7 @@ import { ModelSwitcher } from '../components/ModelSwitcher';
 import { ChatHistory } from '../components/ChatHistory';
 import { CodeDiffViewer } from '../components/CodeDiffViewer';
 import { FileExplorer } from '../components/FileExplorer';
+import { CodeViewerPanel } from '../components/CodeViewerPanel';
 import { FileSearch } from '../components/FileSearch';
 import { FileOperationApproval, FileOperation } from '../components/FileOperationApproval';
 import { MCPManager } from '../components/MCPManager';
@@ -55,6 +57,23 @@ export default function ChatScreen() {
   const { theme, isDarkMode, toggleTheme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  // Keyboard visibility listener
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setKeyboardVisible(true)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardVisible(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
@@ -64,6 +83,8 @@ export default function ChatScreen() {
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showFileExplorer, setShowFileExplorer] = useState(false);
+  const [showCodeViewer, setShowCodeViewer] = useState(false);
+  const [codeViewerFile, setCodeViewerFile] = useState<FileNode | null>(null);
   const [showDiffs, setShowDiffs] = useState<Record<string, boolean>>({});
   // isDarkMode removed
   const [customModels, setCustomModels] = useState<CustomModel[]>([]);
@@ -617,7 +638,7 @@ export default function ChatScreen() {
         .slice(0, -1)
         .filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.approval)
         .filter((m) => m.content && !m.id.startsWith('progress-'))
-        .slice(-12)
+        .slice(-4)  // Reduced from 12 to 4 for faster, cheaper responses
         .map((m) => ({
           role: m.role,
           content: m.content,
@@ -819,10 +840,9 @@ export default function ChatScreen() {
     ]);
   };
 
-  const handleFileSelect = (file: any) => {
-    setShowFileExplorer(false);
-    // In a real implementation, this would open the file in an editor
-    Alert.alert('File Selected', `You selected: ${file.name}\n\nIn a real implementation, this would open the file in a code editor.`);
+  const handleFileSelect = (file: FileNode) => {
+    setCodeViewerFile(file);
+    setShowCodeViewer(true);
   };
 
   const handleApplyCodeDiff = async (diff: CodeDiff) => {
@@ -988,7 +1008,7 @@ export default function ChatScreen() {
           {isTyping && <TypingIndicator styles={styles} theme={theme} />}
         </ScrollView>
 
-        <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={[styles.bottomBar, { paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 12) }]}>
           {(attachedFiles.length > 0 || attachedImages.length > 0) && (
             <ScrollView horizontal style={styles.attachmentsScroll} contentContainerStyle={styles.attachmentsScrollContent}>
               {attachedFiles.map((file) => (
@@ -1131,31 +1151,43 @@ export default function ChatScreen() {
         onFileSelect={handleFileSelect}
       />
 
-      {htmlPreview && (
-        <HTMLPreview
-          visible={!!htmlPreview}
-          filePath={htmlPreview.path}
-          fileName={htmlPreview.name}
-          onClose={() => setHtmlPreview(null)}
-        />
-      )}
+      <CodeViewerPanel
+        visible={showCodeViewer}
+        file={codeViewerFile}
+        onClose={() => setShowCodeViewer(false)}
+      />
 
-      {reactPreview && (
-        <ReactPreview
-          visible={!!reactPreview}
-          filePath={reactPreview.path}
-          fileName={reactPreview.name}
-          onClose={() => setReactPreview(null)}
-        />
-      )}
+      {
+        htmlPreview && (
+          <HTMLPreview
+            visible={!!htmlPreview}
+            filePath={htmlPreview.path}
+            fileName={htmlPreview.name}
+            onClose={() => setHtmlPreview(null)}
+          />
+        )
+      }
 
-      {previewComponentId && (
-        <ComponentPreview
-          visible={!!previewComponentId}
-          onClose={() => setPreviewComponentId(null)}
-          componentId={previewComponentId}
-        />
-      )}
+      {
+        reactPreview && (
+          <ReactPreview
+            visible={!!reactPreview}
+            filePath={reactPreview.path}
+            fileName={reactPreview.name}
+            onClose={() => setReactPreview(null)}
+          />
+        )
+      }
+
+      {
+        previewComponentId && (
+          <ComponentPreview
+            visible={!!previewComponentId}
+            onClose={() => setPreviewComponentId(null)}
+            componentId={previewComponentId}
+          />
+        )
+      }
 
       <FileSearch
         visible={showFileSearch}
@@ -1655,7 +1687,7 @@ export default function ChatScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-    </KeyboardAvoidingView>
+    </KeyboardAvoidingView >
   );
 }
 
