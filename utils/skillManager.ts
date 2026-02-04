@@ -34,6 +34,20 @@ class SkillManager {
   }
 
   /**
+   * Get a simple list of all available skills for AI to describe its capabilities
+   */
+  async getSkillListForAI(): Promise<string> {
+    const skills = await this.getAllSkills();
+    if (!skills.length) return '';
+
+    const lines = skills.map(skill => {
+      return `- **${skill.name}**: ${skill.overview || skill.whenToUse || ''}`;
+    });
+
+    return lines.join('\n');
+  }
+
+  /**
    * Get skill by ID
    */
   async getSkill(id: string): Promise<Skill | null> {

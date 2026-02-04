@@ -245,10 +245,12 @@ CRITICAL RULES:
 
     const toolsDesc = toolRegistry.formatForAI();
 
-    // Load relevant skills for this task
-    console.log('Loading relevant skills...');
+    // Load relevant skills for this task AND a list of all available skills
+    console.log('Loading skills...');
     const relevantSkills = await skillManager.getRelevantSkillsForAI(userRequest, 3);
-    console.log('Skills loaded:', relevantSkills ? 'Yes' : 'No');
+    const allSkillsList = await skillManager.getSkillListForAI();
+    console.log('Relevant skills loaded:', relevantSkills ? 'Yes' : 'No');
+    console.log('Total skills available:', allSkillsList ? allSkillsList.split('\n').length : 0);
 
     let fullContent = '';
     let isJson = false;
@@ -288,8 +290,13 @@ CRITICAL RULES:
 ## Available Tools:
 ${toolsDesc}
 
+${allSkillsList ? `
+## My Agent Skills (I can use these for guidance):
+${allSkillsList}
+` : ''}
+
 ${relevantSkills ? `
-## Available Skills/Guides:
+## Skill Details (relevant to this request):
 ${relevantSkills}
 ` : ''}
 
