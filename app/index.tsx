@@ -38,6 +38,7 @@ import { ComponentPreview } from '../components/ComponentPreview';
 import { MessageContent } from '../components/MessageContent';
 import { ToolsHelp } from '../components/ToolsHelp';
 import { SkillsManager } from '../components/SkillsManager';
+import { CodeArena } from '../components/CodeArena';
 import { AI_MODELS } from '../constants/Models';
 import {
   LOCAL_MODEL_ID,
@@ -96,6 +97,7 @@ export default function ChatScreen() {
   const [reactPreview, setReactPreview] = useState<{ path: string; name: string } | null>(null);
   const [previewComponentId, setPreviewComponentId] = useState<string | null>(null);
   const [showSkillsManager, setShowSkillsManager] = useState(false);
+  const [showCodeArena, setShowCodeArena] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const approvalResolverRef = useRef<((value: boolean) => void) | null>(null);
   const messageCounterRef = useRef(0);
@@ -861,8 +863,8 @@ export default function ChatScreen() {
             <TouchableOpacity onPress={() => setShowSkillsManager(true)} style={styles.headerButton}>
               <Ionicons name="library-outline" size={24} color={theme.accent} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowToolsHelp(true)} style={styles.headerButton}>
-              <Ionicons name="help-circle-outline" size={24} color={theme.accent} />
+            <TouchableOpacity onPress={() => setShowCodeArena(true)} style={styles.headerButton}>
+              <Ionicons name="git-compare" size={24} color={theme.accent} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowTaskTracker(true)} style={styles.headerButton}>
               <Ionicons name="list-outline" size={24} color={agentSteps.length > 0 ? theme.accent : theme.text} />
@@ -1145,6 +1147,16 @@ export default function ChatScreen() {
       <SkillsManager
         visible={showSkillsManager}
         onClose={() => setShowSkillsManager(false)}
+      />
+
+      <CodeArena
+        visible={showCodeArena}
+        onClose={() => setShowCodeArena(false)}
+        customModels={customModels}
+        openAIKey={openAIKey}
+        anthropicKey={anthropicKey}
+        geminiKey={geminiKey}
+        glmKey={glmKey}
       />
 
       <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
