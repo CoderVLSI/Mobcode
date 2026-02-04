@@ -1,4 +1,8 @@
 import { loadAllSkills, findRelevantSkills, formatSkillsForAI, getSkillById, searchSkills, Skill } from './skillLoader';
+import { syncRemoteSkills, getLastSyncTime as getRemoteSyncTime, getRemoteSkillsCount, SyncResult } from './remoteSkills';
+
+// Re-export Skill type for convenience
+export type { Skill };
 
 class SkillManager {
   private skillsCache: Skill[] | null = null;
@@ -87,6 +91,33 @@ class SkillManager {
       count: this.skillsCache?.length || 0,
     };
   }
+
+  /**
+   * Sync skills from GitHub repository
+   */
+  async syncFromGitHub(): Promise<SyncResult> {
+    const result = await syncRemoteSkills();
+    if (result.success) {
+      // Clear cache to force reload with new remote skills
+      this.clearCache();
+    }
+    return result;
+  }
+
+  /**
+   * Get last sync timestamp from GitHub
+   */
+  async getLastSyncTime(): Promise<number> {
+    return getRemoteSyncTime();
+  }
+
+  /**
+   * Get count of remote skills in cache
+   */
+  async getRemoteSkillsCount(): Promise<number> {
+    return getRemoteSkillsCount();
+  }
 }
 
 export const skillManager = new SkillManager();
+

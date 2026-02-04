@@ -1,4 +1,5 @@
 import { BUNDLED_SKILLS } from './bundledSkills';
+import { storage } from './storage';
 
 export interface Skill {
   id: string;
@@ -83,22 +84,43 @@ function parseMarkdownSkill(content: string, filename: string): Skill {
 }
 
 /**
- * Load all skills from bundled skills
+ * Load all skills from bundled skills and remote cache
+ * Remote skills take priority over bundled skills with the same ID
  */
-export async function loadAllSkills(): Promise<Skill[]> {
+export async function loadAllSkills(includeRemote = true): Promise<Skill[]> {
   try {
-    const skills: Skill[] = [];
+    const skillsMap = new Map<string, Skill>();
 
+    // 1. Load bundled skills first (lower priority)
     for (const [id, content] of Object.entries(BUNDLED_SKILLS)) {
       try {
         const skill = parseMarkdownSkill(content, `${id}.md`);
-        skills.push(skill);
+        skillsMap.set(id, skill);
       } catch (error) {
-        console.warn(`Failed to load skill: ${id}`, error);
+        console.warn(`Failed to load bundled skill: ${id}`, error);
       }
     }
 
-    console.log(`Loaded ${skills.length} bundled skills`);
+    // 2. Load remote skills (higher priority - overrides bundled)
+    if (includeRemote) {
+      try {
+        const remoteSkills = await storage.getRemoteSkills();
+        for (const [id, content] of Object.entries(remoteSkills)) {
+          try {
+            const skill = parseMarkdownSkill(content, `${id}.md`);
+            skillsMap.set(id, skill); // Override bundled if exists
+          } catch (error) {
+            console.warn(`Failed to load remote skill: ${id}`, error);
+          }
+        }
+        console.log(`Loaded ${Object.keys(remoteSkills).length} remote skills`);
+      } catch (error) {
+        console.warn('Failed to load remote skills, using bundled only:', error);
+      }
+    }
+
+    const skills = Array.from(skillsMap.values());
+    console.log(`Total skills loaded: ${skills.length}`);
     return skills;
   } catch (error) {
     console.error('Failed to load skills:', error);
@@ -178,10 +200,17 @@ export function formatSkillsForAI(matches: SkillMatch[]): string {
 }
 
 /**
- * Get skill by ID
+ * Get skill by ID (checks remote first, then bundled)
  */
 export async function getSkillById(id: string): Promise<Skill | null> {
   try {
+    // Check remote skills first
+    const remoteSkills = await storage.getRemoteSkills();
+    if (remoteSkills[id]) {
+      return parseMarkdownSkill(remoteSkills[id], `${id}.md`);
+    }
+
+    // Fall back to bundled
     const content = BUNDLED_SKILLS[id];
     if (!content) {
       return null;

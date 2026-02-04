@@ -28,6 +28,10 @@ export function SkillsManager({ visible, onClose }: SkillsManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [stats, setStats] = useState({ cached: false, age: 0, count: 0 });
+  const [syncing, setSyncing] = useState(false);
+  const [remoteCount, setRemoteCount] = useState(0);
+  const [lastSyncTime, setLastSyncTime] = useState<number>(0);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -41,10 +45,40 @@ export function SkillsManager({ visible, onClose }: SkillsManagerProps) {
       const loadedSkills = await skillManager.getAllSkills();
       setSkills(loadedSkills);
       setStats(skillManager.getCacheStats());
+      const remoteSkillsCount = await skillManager.getRemoteSkillsCount();
+      setRemoteCount(remoteSkillsCount);
+      const syncTime = await skillManager.getLastSyncTime();
+      setLastSyncTime(syncTime);
     } catch (error) {
       console.error('Failed to load skills:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSyncFromGitHub = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const result = await skillManager.syncFromGitHub();
+      setSyncing(false);
+
+      if (result.success) {
+        const message = `✅ Synced ${result.count} skills from GitHub`;
+        setSyncMessage(message);
+        await loadSkills(); // Reload to show new skills
+        // Show alert and auto-close modal after delay
+        setTimeout(() => {
+          setSyncMessage(null);
+        }, 4000);
+      } else {
+        setSyncMessage(`❌ Sync failed: ${result.error}`);
+        setTimeout(() => setSyncMessage(null), 5000);
+      }
+    } catch (error) {
+      setSyncing(false);
+      setSyncMessage('❌ Sync failed: Network error');
+      setTimeout(() => setSyncMessage(null), 5000);
     }
   };
 
@@ -63,6 +97,17 @@ export function SkillsManager({ visible, onClose }: SkillsManagerProps) {
     if (ms < 60000) return `${Math.floor(ms / 1000)}s`;
     if (ms < 3600000) return `${Math.floor(ms / 60000)}m`;
     return `${Math.floor(ms / 3600000)}h`;
+  };
+
+  const formatSyncTime = (timestamp: number) => {
+    if (!timestamp) return 'Never';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - timestamp;
+    if (diffMs < 60000) return 'Just now';
+    if (diffMs < 3600000) return `${Math.floor(diffMs / 60000)}m ago`;
+    if (diffMs < 86400000) return `${Math.floor(diffMs / 3600000)}h ago`;
+    return date.toLocaleDateString();
   };
 
   return (
@@ -89,13 +134,43 @@ export function SkillsManager({ visible, onClose }: SkillsManagerProps) {
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{stats.count}</Text>
-              <Text style={styles.statLabel}>Skills</Text>
+              <Text style={styles.statLabel}>Total Skills</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.cached ? formatAge(stats.age) : 'N/A'}</Text>
-              <Text style={styles.statLabel}>Cache Age</Text>
+              <Text style={styles.statValue}>{remoteCount}</Text>
+              <Text style={styles.statLabel}>From GitHub</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{formatSyncTime(lastSyncTime)}</Text>
+              <Text style={styles.statLabel}>Last Sync</Text>
             </View>
           </View>
+
+          {/* Sync Button */}
+          <TouchableOpacity
+            style={[styles.syncButton, syncing && styles.syncButtonDisabled]}
+            onPress={handleSyncFromGitHub}
+            disabled={syncing}
+          >
+            {syncing ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="cloud-download" size={18} color="#fff" />
+            )}
+            <Text style={styles.syncButtonText}>
+              {syncing ? 'Syncing...' : 'Sync from GitHub'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Sync Message */}
+          {syncMessage && (
+            <View style={[
+              styles.syncMessage,
+              syncMessage.includes('failed') ? styles.syncMessageError : styles.syncMessageSuccess
+            ]}>
+              <Text style={styles.syncMessageText}>{syncMessage}</Text>
+            </View>
+          )}
 
           {/* Search */}
           <View style={styles.searchContainer}>
@@ -369,5 +444,43 @@ const createStyles = (theme: Theme) =>
       color: theme.text,
       lineHeight: 20,
       fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    },
+    syncButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.accent,
+      marginHorizontal: 16,
+      marginTop: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 10,
+      gap: 8,
+    },
+    syncButtonDisabled: {
+      opacity: 0.6,
+    },
+    syncButtonText: {
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    syncMessage: {
+      marginHorizontal: 16,
+      marginTop: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    syncMessageSuccess: {
+      backgroundColor: `${theme.success}20`,
+    },
+    syncMessageError: {
+      backgroundColor: `${theme.error}20`,
+    },
+    syncMessageText: {
+      fontSize: 13,
+      color: theme.text,
     },
   });

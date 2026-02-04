@@ -527,7 +527,7 @@ export default function ChatScreen() {
         if (!prev) return null;
 
         let newMessages = [...prev.messages];
-        
+
         if (!streamingMessageIdRef.current) {
           // Create new message for the stream
           streamingMessageIdRef.current = `assistant-${Date.now()}`;
@@ -546,16 +546,16 @@ export default function ChatScreen() {
               content: newMessages[msgIndex].content + token,
             };
           } else {
-             // Fallback if message lost (unlikely)
-             newMessages.push({
-               id: streamingMessageIdRef.current,
-               role: 'assistant',
-               content: token,
-               timestamp: new Date(),
-             });
+            // Fallback if message lost (unlikely)
+            newMessages.push({
+              id: streamingMessageIdRef.current,
+              role: 'assistant',
+              content: token,
+              timestamp: new Date(),
+            });
           }
         }
-        
+
         return {
           ...prev,
           messages: newMessages,
@@ -658,9 +658,9 @@ export default function ChatScreen() {
 
     // Ensure we have at least one response if nothing was streamed (fallback)
     if (!streamingMessageIdRef.current && !result.plan?.steps.length) {
-       const finalContent = result.plan?.conversationalResponse || result.finalOutput || 'Done!';
-       console.log('Creating fallback message, content length:', finalContent.length);
-       const summaryMsg: Message = {
+      const finalContent = result.plan?.conversationalResponse || result.finalOutput || 'Done!';
+      console.log('Creating fallback message, content length:', finalContent.length);
+      const summaryMsg: Message = {
         id: `summary-${Date.now()}`,
         role: 'assistant',
         content: finalContent,
@@ -839,7 +839,11 @@ export default function ChatScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
+    >
       {/* Header - fixed at top */}
       <SafeAreaView style={styles.headerContainer} edges={['top']}>
         <View style={styles.header}>
@@ -1331,10 +1335,10 @@ export default function ChatScreen() {
                       {localModelStatus === 'ready'
                         ? `Downloaded${localModelSize ? ` • ${formatBytes(localModelSize)}` : ''}`
                         : localModelStatus === 'downloading'
-                        ? `Downloading... ${Math.round(localModelProgress * 100)}%`
-                        : localModelStatus === 'error'
-                        ? `Error: ${localModelError || 'Unknown error'}`
-                        : 'Not downloaded'}
+                          ? `Downloading... ${Math.round(localModelProgress * 100)}%`
+                          : localModelStatus === 'error'
+                            ? `Error: ${localModelError || 'Unknown error'}`
+                            : 'Not downloaded'}
                     </Text>
                   </View>
                   {localModelStatus === 'ready' && (
@@ -1545,7 +1549,7 @@ export default function ChatScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

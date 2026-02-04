@@ -79,6 +79,8 @@ const HF_KEY_KEY = '@cursor_hf_key';
 const GEMINI_KEY_KEY = '@cursor_gemini_key';
 const GLM_KEY_KEY = '@cursor_glm_key';
 const GIT_SETTINGS_KEY = '@cursor_git_settings';
+const REMOTE_SKILLS_KEY = '@mobcode_remote_skills';
+const REMOTE_SKILLS_SYNC_KEY = '@mobcode_remote_skills_sync_time';
 
 export const storage = {
   // Get all chats
@@ -365,6 +367,48 @@ export const storage = {
       await AsyncStorage.setItem(GIT_SETTINGS_KEY, JSON.stringify(settings));
     } catch (error) {
       console.error('Error saving git settings:', error);
+    }
+  },
+
+  // Get cached remote skills
+  async getRemoteSkills(): Promise<Record<string, string>> {
+    try {
+      const data = await AsyncStorage.getItem(REMOTE_SKILLS_KEY);
+      if (!data) return {};
+      return JSON.parse(data);
+    } catch (error) {
+      console.error('Error getting remote skills:', error);
+      return {};
+    }
+  },
+
+  // Save cached remote skills
+  async setRemoteSkills(skills: Record<string, string>): Promise<void> {
+    try {
+      await AsyncStorage.setItem(REMOTE_SKILLS_KEY, JSON.stringify(skills));
+    } catch (error) {
+      console.error('Error saving remote skills:', error);
+    }
+  },
+
+  // Get last sync timestamp
+  async getRemoteSkillsSyncTime(): Promise<number> {
+    try {
+      const data = await AsyncStorage.getItem(REMOTE_SKILLS_SYNC_KEY);
+      if (!data) return 0;
+      return parseInt(data, 10);
+    } catch (error) {
+      console.error('Error getting remote skills sync time:', error);
+      return 0;
+    }
+  },
+
+  // Save sync timestamp
+  async setRemoteSkillsSyncTime(timestamp: number): Promise<void> {
+    try {
+      await AsyncStorage.setItem(REMOTE_SKILLS_SYNC_KEY, timestamp.toString());
+    } catch (error) {
+      console.error('Error saving remote skills sync time:', error);
     }
   },
 };

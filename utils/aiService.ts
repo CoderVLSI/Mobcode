@@ -135,7 +135,7 @@ class AIService {
       xhr.onprogress = () => {
         const currIndex = xhr.responseText.length;
         if (lastIndex === currIndex) return;
-        
+
         const chunk = xhr.responseText.substring(lastIndex, currIndex);
         lastIndex = currIndex;
 
@@ -570,8 +570,10 @@ class AIService {
 
       // Map model names to GLM model IDs
       const modelMap: Record<string, string> = {
-        'glm-4.7-coder': 'glm-4-coder',
+        'glm-4.7': 'GLM-4.7',
+        'glm-4.7-coder': 'GLM-4.7',
         'glm-4-coder': 'glm-4-coder',
+        'GLM-4.7': 'GLM-4.7',
       };
 
       const glmModel = modelMap[model] || model;
@@ -676,8 +678,10 @@ class AIService {
 
     try {
       const modelMap: Record<string, string> = {
-        'glm-4.7-coder': 'glm-4-coder',
+        'glm-4.7': 'GLM-4.7',
+        'glm-4.7-coder': 'GLM-4.7',
         'glm-4-coder': 'glm-4-coder',
+        'GLM-4.7': 'GLM-4.7',
       };
 
       const glmModel = modelMap[model] || model;
