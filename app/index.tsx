@@ -638,7 +638,7 @@ export default function ChatScreen() {
         .slice(0, -1)
         .filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.approval)
         .filter((m) => m.content && !m.id.startsWith('progress-'))
-        .slice(-4)  // Reduced from 12 to 4 for faster, cheaper responses
+        .slice(-8)  // History limit for agent context
         .map((m) => ({
           role: m.role,
           content: m.content,
@@ -726,6 +726,7 @@ export default function ChatScreen() {
           role: 'assistant',
           content: finalContent,
           timestamp: new Date(),
+          gitCheckpointHash: result.gitCheckpointHash,
         };
         setCurrentChat((prev) => {
           if (!prev) return null;
@@ -734,6 +735,26 @@ export default function ChatScreen() {
             messages: [...prev.messages, summaryMsg],
             updatedAt: new Date(),
           };
+        });
+      } else if (streamingMessageIdRef.current) {
+        // Update the streamed message with final output and checkpoint hash
+        setCurrentChat((prev) => {
+          if (!prev) return null;
+          const messages = prev.messages.map(m => {
+            if (m.id === streamingMessageIdRef.current) {
+              // Append final output summary to the existing message
+              const updatedContent = result.finalOutput
+                ? `${m.content}\n\n${result.finalOutput}`
+                : m.content;
+              return {
+                ...m,
+                content: updatedContent,
+                gitCheckpointHash: result.gitCheckpointHash,
+              };
+            }
+            return m;
+          });
+          return { ...prev, messages };
         });
       }
 

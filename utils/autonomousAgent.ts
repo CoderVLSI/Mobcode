@@ -2,6 +2,7 @@ import { aiService, AIMessage } from './aiService';
 import { toolRegistry, ToolResult } from './toolRegistry';
 import { skillManager } from './skillManager';
 import { backgroundTaskManager } from './backgroundTask';
+import { gitService } from './gitService';
 
 export interface AgentStep {
   id: string;
@@ -57,152 +58,152 @@ class AutonomousAgent {
       const plan = await this.createPlan(
         userRequest,
         availableTools,
-      model,
-      customModels,
-      apiKey,
-      hfApiKey,
-      geminiApiKey,
-      onStream,
-      history
-    );
+        model,
+        customModels,
+        apiKey,
+        hfApiKey,
+        geminiApiKey,
+        onStream,
+        history
+      );
 
-    console.log('Plan created with', plan.steps.length, 'steps');
-    console.log('Estimated steps:', plan.estimatedSteps);
-    console.log('Requires approval:', plan.requiresApproval.length);
-    onProgress({
-      id: 'plan',
-      description: `Plan: ${plan.steps.length} steps`,
-      tool: 'plan',
-      parameters: {},
-      status: 'completed',
-    }, plan.steps);
+      console.log('Plan created with', plan.steps.length, 'steps');
+      console.log('Estimated steps:', plan.estimatedSteps);
+      console.log('Requires approval:', plan.requiresApproval.length);
+      onProgress({
+        id: 'plan',
+        description: `Plan: ${plan.steps.length} steps`,
+        tool: 'plan',
+        parameters: {},
+        status: 'completed',
+      }, plan.steps);
 
-    if (plan.steps.length === 0 && plan.conversationalResponse) {
-      console.log('=== CONVERSATIONAL RESPONSE (NO TOOLS) ===');
-      console.log('Response:', plan.conversationalResponse.substring(0, 200));
-      return {
-        success: true,
-        plan,
-        finalOutput: plan.conversationalResponse,
-        stepsCompleted: 0,
-        stepsFailed: 0,
-      };
-    }
+      if (plan.steps.length === 0 && plan.conversationalResponse) {
+        console.log('=== CONVERSATIONAL RESPONSE (NO TOOLS) ===');
+        console.log('Response:', plan.conversationalResponse.substring(0, 200));
+        return {
+          success: true,
+          plan,
+          finalOutput: plan.conversationalResponse,
+          stepsCompleted: 0,
+          stepsFailed: 0,
+        };
+      }
 
-    let completed = 0, failed = 0;
+      let completed = 0, failed = 0;
 
-    console.log('=== EXECUTING STEPS (PARALLEL MODE) ===');
+      console.log('=== EXECUTING STEPS (PARALLEL MODE) ===');
 
-    // Group steps by dependencies for parallel execution
-    const executeStep = async (step: AgentStep): Promise<void> => {
-      console.log('--- Executing Step:', step.description);
-      console.log('Tool:', step.tool);
-      console.log('Needs approval:', plan.requiresApproval.includes(step.id));
+      // Group steps by dependencies for parallel execution
+      const executeStep = async (step: AgentStep): Promise<void> => {
+        console.log('--- Executing Step:', step.description);
+        console.log('Tool:', step.tool);
+        console.log('Needs approval:', plan.requiresApproval.includes(step.id));
 
-      if (plan.requiresApproval.includes(step.id)) {
-        console.log('Waiting for user approval...');
-        const approved = await onApprovalNeeded(step);
-        console.log('Approved:', approved);
-        if (!approved) {
+        if (plan.requiresApproval.includes(step.id)) {
+          console.log('Waiting for user approval...');
+          const approved = await onApprovalNeeded(step);
+          console.log('Approved:', approved);
+          if (!approved) {
+            step.status = 'failed';
+            failed++;
+            onProgress(step, plan.steps);
+            console.log('Step denied by user');
+            return;
+          }
+        }
+
+        step.status = 'executing';
+        onProgress(step, plan.steps);
+        console.log('Executing step...');
+
+        try {
+          const result = await toolRegistry.execute(step.tool, step.parameters);
+          console.log('Step result success:', result.success);
+          if (!result.success) {
+            console.log('Step error:', result.error);
+          }
+          step.result = result;
+          step.status = result.success ? 'completed' : 'failed';
+          result.success ? completed++ : failed++;
+        } catch (e) {
+          console.log('Step exception:', String(e));
           step.status = 'failed';
+          step.error = String(e);
           failed++;
-          onProgress(step, plan.steps);
-          console.log('Step denied by user');
-          return;
         }
-      }
 
-      step.status = 'executing';
-      onProgress(step, plan.steps);
-      console.log('Executing step...');
+        console.log('Step status:', step.status);
+        onProgress(step, plan.steps);
+      };
 
-      try {
-        const result = await toolRegistry.execute(step.tool, step.parameters);
-        console.log('Step result success:', result.success);
-        if (!result.success) {
-          console.log('Step error:', result.error);
-        }
-        step.result = result;
-        step.status = result.success ? 'completed' : 'failed';
-        result.success ? completed++ : failed++;
-      } catch (e) {
-        console.log('Step exception:', String(e));
-        step.status = 'failed';
-        step.error = String(e);
-        failed++;
-      }
+      // Execute steps in parallel batches
+      const BATCH_SIZE = 5; // Execute up to 5 steps at once
+      for (let i = 0; i < plan.steps.length; i += BATCH_SIZE) {
+        const batch = plan.steps.slice(i, i + BATCH_SIZE);
+        console.log(`\n=== BATCH ${Math.floor(i / BATCH_SIZE) + 1} ===`);
+        console.log(`Executing ${batch.length} steps in parallel...`);
 
-      console.log('Step status:', step.status);
-      onProgress(step, plan.steps);
-    };
-
-    // Execute steps in parallel batches
-    const BATCH_SIZE = 5; // Execute up to 5 steps at once
-    for (let i = 0; i < plan.steps.length; i += BATCH_SIZE) {
-      const batch = plan.steps.slice(i, i + BATCH_SIZE);
-      console.log(`\n=== BATCH ${Math.floor(i / BATCH_SIZE) + 1} ===`);
-      console.log(`Executing ${batch.length} steps in parallel...`);
-
-      // Update background task with current steps and progress
-      backgroundTaskManager.updateTask({
-        agentSteps: [...plan.steps],
-        progress: Math.round((i / plan.steps.length) * 100),
-        currentStep: `Executing batch ${Math.floor(i / BATCH_SIZE) + 1}...`,
-      });
-
-      // Execute batch in parallel
-      await Promise.all(batch.map(step => executeStep(step)));
-    }
-
-    console.log('=== ALL STEPS COMPLETE ===');
-    console.log('Completed:', completed);
-    console.log('Failed:', failed);
-
-    // Update background task with final step states
-    backgroundTaskManager.updateTask({
-      agentSteps: [...plan.steps],
-      progress: 100,
-      currentStep: `Completed ${completed} steps, ${failed} failed`,
-    });
-
-    // Get conversational summary of results
-    let conversationalSummary = `Completed ${completed} steps, ${failed} failed`;
-
-    if (completed > 0 || failed > 0) {
-      console.log('=== GENERATING CONVERSATIONAL SUMMARY ===');
-      try {
-        const toolResults = plan.steps
-          .filter(s => s.status === 'completed' || s.status === 'failed')
-          .map(s => ({
-            tool: s.tool,
-            description: s.description,
-            status: s.status,
-            // Only include success/error status, not raw output
-            success: s.status === 'completed',
-            error: s.error,
-          }));
-
-        // Create a simple summary of what was done
-        const completedSteps = toolResults.filter(t => t.success);
-        const failedSteps = toolResults.filter(t => !t.success);
-
-        console.log('Completed steps:', completedSteps.length);
-        console.log('Failed steps:', failedSteps.length);
-
-        let summaryPrompt = `User asked: "${userRequest}"\n\n`;
-        summaryPrompt += `Completed ${completedSteps.length} tasks:\n`;
-        completedSteps.forEach((s, i) => {
-          summaryPrompt += `${i + 1}. ${s.description}\n`;
+        // Update background task with current steps and progress
+        backgroundTaskManager.updateTask({
+          agentSteps: [...plan.steps],
+          progress: Math.round((i / plan.steps.length) * 100),
+          currentStep: `Executing batch ${Math.floor(i / BATCH_SIZE) + 1}...`,
         });
 
-        if (failedSteps.length > 0) {
-          summaryPrompt += `\nFailed ${failedSteps.length} tasks:\n`;
-          failedSteps.forEach((s, i) => {
-            summaryPrompt += `${i + 1}. ${s.description}: ${s.error}\n`;
-          });
-        }
+        // Execute batch in parallel
+        await Promise.all(batch.map(step => executeStep(step)));
+      }
 
-        summaryPrompt += `\n\nPlease provide a friendly summary to the user. Focus on what was accomplished. Keep it concise and conversational.
+      console.log('=== ALL STEPS COMPLETE ===');
+      console.log('Completed:', completed);
+      console.log('Failed:', failed);
+
+      // Update background task with final step states
+      backgroundTaskManager.updateTask({
+        agentSteps: [...plan.steps],
+        progress: 100,
+        currentStep: `Completed ${completed} steps, ${failed} failed`,
+      });
+
+      // Get conversational summary of results
+      let conversationalSummary = `Completed ${completed} steps, ${failed} failed`;
+
+      if (completed > 0 || failed > 0) {
+        console.log('=== GENERATING CONVERSATIONAL SUMMARY ===');
+        try {
+          const toolResults = plan.steps
+            .filter(s => s.status === 'completed' || s.status === 'failed')
+            .map(s => ({
+              tool: s.tool,
+              description: s.description,
+              status: s.status,
+              // Only include success/error status, not raw output
+              success: s.status === 'completed',
+              error: s.error,
+            }));
+
+          // Create a simple summary of what was done
+          const completedSteps = toolResults.filter(t => t.success);
+          const failedSteps = toolResults.filter(t => !t.success);
+
+          console.log('Completed steps:', completedSteps.length);
+          console.log('Failed steps:', failedSteps.length);
+
+          let summaryPrompt = `User asked: "${userRequest}"\n\n`;
+          summaryPrompt += `Completed ${completedSteps.length} tasks:\n`;
+          completedSteps.forEach((s, i) => {
+            summaryPrompt += `${i + 1}. ${s.description}\n`;
+          });
+
+          if (failedSteps.length > 0) {
+            summaryPrompt += `\nFailed ${failedSteps.length} tasks:\n`;
+            failedSteps.forEach((s, i) => {
+              summaryPrompt += `${i + 1}. ${s.description}: ${s.error}\n`;
+            });
+          }
+
+          summaryPrompt += `\n\nPlease provide a friendly summary to the user. Focus on what was accomplished. Keep it concise and conversational.
 
 CRITICAL RULES:
 - NEVER show JSON, tool names, or technical details
@@ -211,46 +212,60 @@ CRITICAL RULES:
 - Just say what you did, not HOW you did it
 - Example: "Created the chat app files" instead of "Used write_file tool to create ChatApp.tsx"`;
 
-        console.log('Summary prompt:', summaryPrompt);
+          console.log('Summary prompt:', summaryPrompt);
 
-        // Use streaming for the summary too
-        let summaryText = '';
-        await aiService.streamChat([
-          {
-            role: 'system',
-            content: 'You are a helpful coding assistant. Explain what was accomplished in simple, conversational language. Never show JSON, tool names, or technical details.',
-          },
-          {
-            role: 'user',
-            content: summaryPrompt,
-          },
-        ], model, customModels, apiKey, (token) => {
-          summaryText += token;
-          if (onStream) onStream(token);
-        }, hfApiKey, geminiApiKey);
+          // Use streaming for the summary too
+          let summaryText = '';
+          await aiService.streamChat([
+            {
+              role: 'system',
+              content: 'You are a helpful coding assistant. Explain what was accomplished in simple, conversational language. Never show JSON, tool names, or technical details.',
+            },
+            {
+              role: 'user',
+              content: summaryPrompt,
+            },
+          ], model, customModels, apiKey, (token) => {
+            summaryText += token;
+            if (onStream) onStream(token);
+          }, hfApiKey, geminiApiKey);
 
-        console.log('Summary generated, length:', summaryText.length);
-        console.log('Summary preview:', summaryText.substring(0, 200));
+          console.log('Summary generated, length:', summaryText.length);
+          console.log('Summary preview:', summaryText.substring(0, 200));
 
-        if (summaryText) {
-          conversationalSummary = summaryText;
+          if (summaryText) {
+            conversationalSummary = summaryText;
+          }
+        } catch (e) {
+          console.error('Failed to generate conversational summary:', e);
+          // Fall back to default summary
         }
-      } catch (e) {
-        console.error('Failed to generate conversational summary:', e);
-        // Fall back to default summary
       }
-    }
 
-    console.log('=== AGENT TASK COMPLETE ===');
-    console.log('Final output length:', conversationalSummary.length);
+      console.log('=== AGENT TASK COMPLETE ===');
+      console.log('Final output length:', conversationalSummary.length);
 
-    return {
-      success: failed === 0,
-      plan,
-      finalOutput: conversationalSummary,
-      stepsCompleted: completed,
-      stepsFailed: failed,
-    };
+      // Create Git checkpoint after file operations
+      let gitCheckpointHash: string | null = null;
+      const hasFileOps = plan.steps.some(s =>
+        ['create_file', 'write_file', 'delete_file', 'append_file'].includes(s.tool) && s.status === 'completed'
+      );
+      if (hasFileOps && failed === 0) {
+        try {
+          gitCheckpointHash = await gitService.createCheckpoint(`Agent: ${plan.goal}`);
+        } catch (e) {
+          console.error('Failed to create checkpoint:', e);
+        }
+      }
+
+      return {
+        success: failed === 0,
+        plan,
+        finalOutput: conversationalSummary,
+        stepsCompleted: completed,
+        stepsFailed: failed,
+        gitCheckpointHash: gitCheckpointHash || undefined,
+      };
     } catch (error) {
       console.error('=== AGENT EXECUTION FAILED ===');
       console.error('Error:', error);
@@ -311,12 +326,19 @@ CRITICAL RULES:
     const response = await aiService.streamChat([
       {
         role: 'system',
-        content: isGLMModel ? `You are an AI coding assistant. For file operations, respond with JSON:
-{"goal": "task","steps":[{"id":"x","description":"what","tool":"tool","parameters":{},"requiresApproval":false}]}
+        content: isGLMModel ? `You are an AI coding assistant. For file/code operations, respond ONLY with JSON:
+{"goal": "task","steps":[{"id":"1","description":"what","tool":"tool","parameters":{},"requiresApproval":true}]}
+
+IMPORTANT RULES:
+- For DELETE operations: Use delete_file tool with {"path": "folder_or_file_to_delete"}
+- For CREATE operations: Use create_file or write_file
+- ALWAYS create complete plans (don't just list directories when user wants to delete)
+- If user says "delete X", create a delete_file step directly, don't list first
+- Mark requiresApproval: true for delete_file, write_file, create_file, run_command
 
 Tools: ${availableTools.join(', ')}
 
-For questions, just answer normally.` : `You are an AI coding assistant with access to development tools.
+For questions without file operations, just answer normally.` : `You are an AI coding assistant with access to development tools.
 
 ## Tools Available: ${availableTools.join(', ')}
 
@@ -325,13 +347,14 @@ ${allSkillsList ? `Skills: ${allSkillsList}` : ''}
 ${relevantSkills ? `Relevant Skills:\n${relevantSkills}` : ''}
 
 ## When to Use JSON Plans:
-- "Create"/"Make"/"Add feature"/"Setup" → respond with JSON plan
+- "Create"/"Make"/"Add feature"/"Setup"/"Delete" → respond with JSON plan
 - Questions/Explanations → respond naturally
 
 ## JSON Format:
 {"goal": "task","steps":[{"id":"x","description":"what","tool":"tool","parameters":{},"requiresApproval":false}]}
 
 ## Rules:
+- For DELETE operations: Use delete_file directly with the path, don't just list directories first
 - Create projects in separate folders (e.g., "myapp/")
 - Files needing approval: write_file, create_file, delete_file, run_command, git_push
 - Multi-file: create in parallel when possible
@@ -451,7 +474,7 @@ For chat: respond naturally. For tasks: respond with ONLY the JSON, no extra tex
             i++;
           }
         } else if (char === '{' || char === '[' || char === '}' || char === ']' ||
-                   char === ':' || char === ',') {
+          char === ':' || char === ',') {
           result += char;
           i++;
         } else if (/\s/.test(char)) {
