@@ -436,16 +436,21 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
             };
           }
         } catch (innerError) {
-          // JSON.parse failed - this usually means malformed JSON
+          // JSON parsing failed - malformed JSON or incomplete JSON at end
           console.warn('JSON parsing failed:', (innerError as Error).message);
-          // Extract text before the JSON as the response
+          // Extract text before/after the JSON as the response
           const jsonIndex = fullContent.indexOf(jsonMatch[0]);
           const textBefore = jsonIndex > 0 ? fullContent.substring(0, jsonIndex).trim() : '';
+          const textAfter = fullContent.substring(jsonIndex + jsonMatch[0].length).trim();
 
+          // Use text before JSON, text after JSON, or fall back to full content
           if (textBefore) {
             conversationalResponse = textBefore;
+          } else if (textAfter) {
+            conversationalResponse = textAfter;
           } else {
-            conversationalResponse = "I apologize, but my response was cut off due to length limits. Could you please break this task into smaller parts? Try asking me to work on one file or feature at a time.";
+            // No text found around JSON - use the full content instead of generic error
+            conversationalResponse = fullContent || "I received an empty response. Please try again.";
           }
 
           return {
