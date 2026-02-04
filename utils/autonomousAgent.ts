@@ -492,6 +492,31 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
       // Fix "description""value" pattern (missing colon and comma)
       fixed = fixed.replace(/"description"\s+"/g, '"description": "');
 
+      // Fix truncated JSON - close incomplete strings at the end
+      // Count opening and closing quotes to detect incomplete strings
+      const quoteCount = (fixed.match(/"/g) || []).length;
+      if (quoteCount % 2 !== 0) {
+        // Odd number of quotes means incomplete string - add closing quote
+        console.log('Detected incomplete string, adding closing quote');
+        fixed += '"';
+      }
+
+      // Fix truncated objects - close incomplete objects/arrays
+      const openBraces = (fixed.match(/\{/g) || []).length;
+      const closeBraces = (fixed.match(/\}/g) || []).length;
+      const openBrackets = (fixed.match(/\[/g) || []).length;
+      const closeBrackets = (fixed.match(/\]/g) || []).length;
+
+      // Add missing closing braces/brackets
+      for (let i = 0; i < openBraces - closeBraces; i++) {
+        fixed += '}';
+        console.log('Added missing closing brace');
+      }
+      for (let i = 0; i < openBrackets - closeBrackets; i++) {
+        fixed += ']';
+        console.log('Added missing closing bracket');
+      }
+
       // Then fix trailing commas
       fixed = fixed.replace(/,\s*}/g, '}');
       fixed = fixed.replace(/,\s*]/g, ']');
