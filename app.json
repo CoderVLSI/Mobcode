@@ -5,14 +5,13 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
     "newArchEnabled": true,
-    "plugins": [
-      // llama.rn removed for Expo Go compatibility
-      // Use EAS build for local LLM support
-    ],
+    "newArchEnabled": true,
+    "plugins": [],
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -20,6 +19,10 @@
       }
     },
     "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      },
       "backgroundColor": "#1e1e1e",
       "permissions": [
         "READ_EXTERNAL_STORAGE",

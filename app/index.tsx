@@ -49,6 +49,7 @@ import {
   LOCAL_MODEL_AVAILABLE,
 } from '../utils/localLlama';
 import { previewBus, PreviewRequest } from '../utils/previewBus';
+import { backgroundTaskManager, BackgroundTask } from '../utils/backgroundTask';
 
 export default function ChatScreen() {
   const { theme, isDarkMode, toggleTheme } = useTheme();
@@ -99,6 +100,7 @@ export default function ChatScreen() {
   const [showSkillsManager, setShowSkillsManager] = useState(false);
   const [showCodeArena, setShowCodeArena] = useState(false);
   const [openRouterKey, setOpenRouterKey] = useState('');
+  const [backgroundTask, setBackgroundTask] = useState<BackgroundTask | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const approvalResolverRef = useRef<((value: boolean) => void) | null>(null);
   const messageCounterRef = useRef(0);
@@ -120,6 +122,37 @@ export default function ChatScreen() {
         setPreviewComponentId(request.componentId);
       }
     });
+    return unsubscribe;
+  }, []);
+
+  // Listen to background task updates
+  useEffect(() => {
+    const unsubscribe = backgroundTaskManager.onTaskUpdate((task) => {
+      console.log('[App] Background task update:', task);
+      setBackgroundTask(task);
+
+      // If task is running and we're in chat screen, update the goal and steps
+      if (task.status === 'running') {
+        if (task.currentStep) {
+          setCurrentGoal(task.currentStep);
+        }
+        // Restore agent steps from background task
+        if (task.agentSteps && task.agentSteps.length > 0) {
+          const toolSteps = task.agentSteps.filter(s => s.tool !== 'plan');
+          setAgentSteps(toolSteps);
+        }
+      }
+
+      // If task is completed or failed, clear it after showing result
+      if (task.status === 'completed' || task.status === 'failed') {
+        setTimeout(() => {
+          setBackgroundTask(null);
+          // Clear agent steps after task is fully complete
+          setAgentSteps([]);
+        }, 5000);
+      }
+    });
+
     return unsubscribe;
   }, []);
 
@@ -513,176 +546,203 @@ export default function ChatScreen() {
     // Always use autonomous agent - AI decides when to use tools
     setAgentSteps([]);
 
-    // Determine which API key to use based on the selected model
-    let apiKey: string | undefined;
-    let hfApiKey: string | undefined;
-    let geminiApiKey: string | undefined;
-    if (selectedModel.startsWith('gpt')) {
-      apiKey = openAIKey || undefined;
-    } else if (selectedModel.startsWith('claude') || selectedModel.startsWith('anthropic')) {
-      apiKey = anthropicKey || undefined;
-    } else if (selectedModel.startsWith('gemini')) {
-      geminiApiKey = geminiKey || undefined;
-    } else if (selectedModel.startsWith('glm')) {
-      apiKey = glmKey || undefined;
-    }
+    let result: any;
+    try {
+      // Determine which API key to use based on the selected model
+      let apiKey: string | undefined;
+      let hfApiKey: string | undefined;
+      let geminiApiKey: string | undefined;
+      if (selectedModel.startsWith('gpt')) {
+        apiKey = openAIKey || undefined;
+      } else if (selectedModel.startsWith('claude') || selectedModel.startsWith('anthropic')) {
+        apiKey = anthropicKey || undefined;
+      } else if (selectedModel.startsWith('gemini')) {
+        geminiApiKey = geminiKey || undefined;
+      } else if (selectedModel.startsWith('glm')) {
+        apiKey = glmKey || undefined;
+      }
 
-    const handleStream = (token: string) => {
-      setCurrentChat((prev) => {
-        if (!prev) return null;
+      const handleStream = (token: string) => {
+        setCurrentChat((prev) => {
+          if (!prev) return null;
 
-        let newMessages = [...prev.messages];
+          let newMessages = [...prev.messages];
 
-        if (!streamingMessageIdRef.current) {
-          // Create new message for the stream
-          streamingMessageIdRef.current = `assistant-${Date.now()}`;
-          newMessages.push({
-            id: streamingMessageIdRef.current,
-            role: 'assistant',
-            content: token,
-            timestamp: new Date(),
-          });
-        } else {
-          // Update existing message
-          const msgIndex = newMessages.findIndex(m => m.id === streamingMessageIdRef.current);
-          if (msgIndex >= 0) {
-            newMessages[msgIndex] = {
-              ...newMessages[msgIndex],
-              content: newMessages[msgIndex].content + token,
-            };
-          } else {
-            // Fallback if message lost (unlikely)
+          if (!streamingMessageIdRef.current) {
+            // Create new message for the stream
+            streamingMessageIdRef.current = `assistant-${Date.now()}`;
             newMessages.push({
               id: streamingMessageIdRef.current,
               role: 'assistant',
               content: token,
               timestamp: new Date(),
             });
+          } else {
+            // Update existing message
+            const msgIndex = newMessages.findIndex(m => m.id === streamingMessageIdRef.current);
+            if (msgIndex >= 0) {
+              newMessages[msgIndex] = {
+                ...newMessages[msgIndex],
+                content: newMessages[msgIndex].content + token,
+              };
+            } else {
+              // Fallback if message lost (unlikely)
+              newMessages.push({
+                id: streamingMessageIdRef.current,
+                role: 'assistant',
+                content: token,
+                timestamp: new Date(),
+              });
+            }
           }
-        }
 
-        return {
-          ...prev,
-          messages: newMessages,
-        };
-      });
-    };
-
-    if (selectedModel === LOCAL_MODEL_ID) {
-      try {
-        await ensureLocalModelReadyWithUI();
-      } catch (error) {
-        setIsTyping(false);
-        Alert.alert('Local Model Error', (error as Error).message || 'Failed to prepare local model.');
-        return;
-      }
-    }
-
-    const historyMessages = updatedMessages
-      .slice(0, -1)
-      .filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.approval)
-      .filter((m) => m.content && !m.id.startsWith('progress-'))
-      .slice(-12)
-      .map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-    const result = await autonomousAgent.executeTask(
-      agentInput,
-      [
-        'read_file', 'write_file', 'create_file', 'delete_file', 'list_directory', 'search_files', 'run_command',
-        'find_files', 'append_file', 'file_info', 'count_lines', 'list_imports',
-        'create_component', 'npm_info', 'npm_install', 'update_package_json', 'init_project',
-        'git_init', 'git_status', 'git_add', 'git_commit', 'git_log', 'git_set_remote', 'git_clone', 'git_pull', 'git_push',
-        'open_html_preview', 'open_react_preview', 'open_component_preview', 'list_preview_components'
-      ],
-      async (step, allSteps) => {
-        // Progress callback - update task tracker
-        // Filter out the 'plan' metadata step - only show actual tool steps
-        const toolSteps = allSteps.filter(s => s.tool !== 'plan');
-        setAgentSteps(toolSteps);
-        setCurrentGoal(toolSteps.length > 0 ? 'Processing tasks...' : inputText.trim());
-
-        // Don't add progress messages to chat - keep it clean
-        // Progress is shown in the task tracker badge instead
-      },
-      async (step) => {
-        // Approval callback - show inline approval card in chat
-        return new Promise((resolve) => {
-          approvalResolverRef.current = resolve;
-          const approvalMessageId = `approval-${Date.now()}`;
-          const approvalMessage: Message = {
-            id: approvalMessageId,
-            role: 'assistant',
-            content: `Approval required: ${step.tool}`,
-            timestamp: new Date(),
-            approval: {
-              id: step.id,
-              description: step.description,
-              tool: step.tool,
-              parameters: step.parameters,
-              status: 'pending',
-            },
+          return {
+            ...prev,
+            messages: newMessages,
           };
-          setCurrentChat((prev) => {
-            if (!prev) return null;
-            return {
-              ...prev,
-              messages: [...prev.messages, approvalMessage],
-              updatedAt: new Date(),
-            };
-          });
         });
-      },
-      selectedModel,
-      customModels,
-      apiKey,
-      hfApiKey,
-      geminiApiKey,
-      handleStream, // Pass the streaming callback
-      historyMessages
-    );
+      };
 
-    console.log('=== AGENT EXECUTION COMPLETE ===');
-    console.log('Success:', result.success);
-    console.log('Steps completed:', result.stepsCompleted);
-    console.log('Steps failed:', result.stepsFailed);
-    console.log('Final output length:', result.finalOutput?.length || 0);
-    console.log('Final output preview:', result.finalOutput?.substring(0, 300) || 'No output');
-    console.log('Has conversational response:', !!result.plan?.conversationalResponse);
-    console.log('Has tool steps:', result.plan?.steps?.length || 0);
+      if (selectedModel === LOCAL_MODEL_ID) {
+        try {
+          await ensureLocalModelReadyWithUI();
+        } catch (error) {
+          setIsTyping(false);
+          Alert.alert('Local Model Error', (error as Error).message || 'Failed to prepare local model.');
+          return;
+        }
+      }
 
-    // Clear agent steps after completion
-    setAgentSteps([]);
+      const historyMessages = updatedMessages
+        .slice(0, -1)
+        .filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.approval)
+        .filter((m) => m.content && !m.id.startsWith('progress-'))
+        .slice(-12)
+        .map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
 
-    // Store the goal for task tracker
-    if (result.plan?.goal) {
-      setCurrentGoal(result.plan.goal);
-    }
+      result = await autonomousAgent.executeTask(
+        agentInput,
+        [
+          'read_file', 'write_file', 'create_file', 'delete_file', 'list_directory', 'search_files', 'run_command',
+          'find_files', 'append_file', 'file_info', 'count_lines', 'list_imports',
+          'create_component', 'npm_info', 'npm_install', 'update_package_json', 'init_project',
+          'git_init', 'git_status', 'git_add', 'git_commit', 'git_log', 'git_set_remote', 'git_clone', 'git_pull', 'git_push',
+          'open_html_preview', 'open_react_preview', 'open_component_preview', 'list_preview_components'
+        ],
+        async (step, allSteps) => {
+          // Progress callback - update task tracker
+          // Filter out the 'plan' metadata step - only show actual tool steps
+          const toolSteps = allSteps.filter(s => s.tool !== 'plan');
+          setAgentSteps(toolSteps);
+          setCurrentGoal(toolSteps.length > 0 ? 'Processing tasks...' : inputText.trim());
 
-    // Ensure we have at least one response if nothing was streamed (fallback)
-    if (!streamingMessageIdRef.current && !result.plan?.steps.length) {
-      const finalContent = result.plan?.conversationalResponse || result.finalOutput || 'Done!';
-      console.log('Creating fallback message, content length:', finalContent.length);
-      const summaryMsg: Message = {
-        id: `summary-${Date.now()}`,
+          // Don't add progress messages to chat - keep it clean
+          // Progress is shown in the task tracker badge instead
+        },
+        async (step) => {
+          // Approval callback - show inline approval card in chat
+          return new Promise((resolve) => {
+            approvalResolverRef.current = resolve;
+            const approvalMessageId = `approval-${Date.now()}`;
+            const approvalMessage: Message = {
+              id: approvalMessageId,
+              role: 'assistant',
+              content: `Approval required: ${step.tool}`,
+              timestamp: new Date(),
+              approval: {
+                id: step.id,
+                description: step.description,
+                tool: step.tool,
+                parameters: step.parameters,
+                status: 'pending',
+              },
+            };
+            setCurrentChat((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                messages: [...prev.messages, approvalMessage],
+                updatedAt: new Date(),
+              };
+            });
+          });
+        },
+        selectedModel,
+        customModels,
+        apiKey,
+        hfApiKey,
+        geminiApiKey,
+        handleStream, // Pass the streaming callback
+        historyMessages
+      );
+
+      console.log('=== AGENT EXECUTION COMPLETE ===');
+      console.log('Success:', result.success);
+      console.log('Steps completed:', result.stepsCompleted);
+      console.log('Steps failed:', result.stepsFailed);
+      console.log('Final output length:', result.finalOutput?.length || 0);
+      console.log('Final output preview:', result.finalOutput?.substring(0, 300) || 'No output');
+      console.log('Has conversational response:', !!result.plan?.conversationalResponse);
+      console.log('Has tool steps:', result.plan?.steps?.length || 0);
+
+      // Complete the background task - it will handle cleanup after 5 seconds
+      backgroundTaskManager.completeTask({ success: result.success, result });
+
+      // Store the goal for task tracker
+      if (result.plan?.goal) {
+        setCurrentGoal(result.plan.goal);
+      }
+
+      // Ensure we have at least one response if nothing was streamed (fallback)
+      if (!streamingMessageIdRef.current && !result.plan?.steps.length) {
+        const finalContent = result.plan?.conversationalResponse || result.finalOutput || 'Done!';
+        console.log('Creating fallback message, content length:', finalContent.length);
+        const summaryMsg: Message = {
+          id: `summary-${Date.now()}`,
+          role: 'assistant',
+          content: finalContent,
+          timestamp: new Date(),
+        };
+        setCurrentChat((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            messages: [...prev.messages, summaryMsg],
+            updatedAt: new Date(),
+          };
+        });
+      }
+
+      console.log('=== SEND MESSAGE COMPLETE ===');
+      setIsTyping(false);
+    } catch (error) {
+      console.error('=== AGENT EXECUTION FAILED ===');
+      console.error('Error:', error);
+
+      // Fail the background task
+      backgroundTaskManager.failTask((error as Error).message || 'Unknown error');
+
+      // Show error message to user
+      const errorMsg: Message = {
+        id: `error-${Date.now()}`,
         role: 'assistant',
-        content: finalContent,
+        content: `Sorry, something went wrong: ${(error as Error).message || 'Unknown error'}`,
         timestamp: new Date(),
       };
       setCurrentChat((prev) => {
         if (!prev) return null;
         return {
           ...prev,
-          messages: [...prev.messages, summaryMsg],
+          messages: [...prev.messages, errorMsg],
           updatedAt: new Date(),
         };
       });
-    }
 
-    console.log('=== SEND MESSAGE COMPLETE ===');
-    setIsTyping(false);
+      setIsTyping(false);
+    }
   };
 
   const toggleDiff = (messageId: string) => {
@@ -707,7 +767,7 @@ export default function ChatScreen() {
         if (message.id !== messageId || !message.approval) return message;
         return {
           ...message,
-          approval: { ...message.approval, status: approved ? 'approved' : 'denied' },
+          approval: { ...message.approval, status: approved ? 'approved' : 'denied' as 'approved' | 'denied' },
         };
       });
       return { ...prev, messages, updatedAt: new Date() };
@@ -847,6 +907,7 @@ export default function ChatScreen() {
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      enabled={Platform.OS === 'ios'}
       keyboardVerticalOffset={0}
     >
       {/* Header - fixed at top */}
@@ -927,7 +988,7 @@ export default function ChatScreen() {
           {isTyping && <TypingIndicator styles={styles} theme={theme} />}
         </ScrollView>
 
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           {(attachedFiles.length > 0 || attachedImages.length > 0) && (
             <ScrollView horizontal style={styles.attachmentsScroll} contentContainerStyle={styles.attachmentsScrollContent}>
               {attachedFiles.map((file) => (
@@ -1745,7 +1806,7 @@ function ApprovalInlineCard({
           <Text style={styles.approvalTitle}>Approval Required</Text>
         </View>
         <View style={[styles.approvalBadge, { backgroundColor: `${risk.color}15` }]}>
-          <Ionicons name={risk.icon} size={12} color={risk.color} />
+          <Ionicons name={risk.icon as any} size={12} color={risk.color} />
           <Text style={[styles.approvalBadgeText, { color: risk.color }]}>
             {risk.level.toUpperCase()}
           </Text>
@@ -2350,11 +2411,6 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   pickerDesc: {
     fontSize: 12,
     color: theme.textSecondary,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   modalBackdrop: {
     position: 'absolute',

@@ -1,6 +1,7 @@
 import { aiService, AIMessage } from './aiService';
 import { toolRegistry, ToolResult } from './toolRegistry';
 import { skillManager } from './skillManager';
+import { backgroundTaskManager } from './backgroundTask';
 
 export interface AgentStep {
   id: string;
@@ -42,9 +43,20 @@ class AutonomousAgent {
     console.log('Model:', model);
     console.log('Available Tools:', availableTools.length);
 
-    const plan = await this.createPlan(
-      userRequest,
-      availableTools,
+    // Start background task
+    const taskId = `task-${Date.now()}`;
+    backgroundTaskManager.startTask({
+      id: taskId,
+      type: 'agent_execution',
+      status: 'running',
+      totalSteps: 0, // Will be updated after plan creation
+      currentStep: 'Creating execution plan...',
+    });
+
+    try {
+      const plan = await this.createPlan(
+        userRequest,
+        availableTools,
       model,
       customModels,
       apiKey,
@@ -131,6 +143,13 @@ class AutonomousAgent {
       console.log(`\n=== BATCH ${Math.floor(i / BATCH_SIZE) + 1} ===`);
       console.log(`Executing ${batch.length} steps in parallel...`);
 
+      // Update background task with current steps and progress
+      backgroundTaskManager.updateTask({
+        agentSteps: [...plan.steps],
+        progress: Math.round((i / plan.steps.length) * 100),
+        currentStep: `Executing batch ${Math.floor(i / BATCH_SIZE) + 1}...`,
+      });
+
       // Execute batch in parallel
       await Promise.all(batch.map(step => executeStep(step)));
     }
@@ -138,6 +157,13 @@ class AutonomousAgent {
     console.log('=== ALL STEPS COMPLETE ===');
     console.log('Completed:', completed);
     console.log('Failed:', failed);
+
+    // Update background task with final step states
+    backgroundTaskManager.updateTask({
+      agentSteps: [...plan.steps],
+      progress: 100,
+      currentStep: `Completed ${completed} steps, ${failed} failed`,
+    });
 
     // Get conversational summary of results
     let conversationalSummary = `Completed ${completed} steps, ${failed} failed`;
@@ -225,6 +251,21 @@ CRITICAL RULES:
       stepsCompleted: completed,
       stepsFailed: failed,
     };
+    } catch (error) {
+      console.error('=== AGENT EXECUTION FAILED ===');
+      console.error('Error:', error);
+
+      // Fail the background task
+      backgroundTaskManager.failTask((error as Error).message || 'Unknown error');
+
+      return {
+        success: false,
+        plan: { id: Date.now().toString(), goal: userRequest, steps: [], estimatedSteps: 0, requiresApproval: [] },
+        finalOutput: `Error: ${(error as Error).message || 'Unknown error'}`,
+        stepsCompleted: 0,
+        stepsFailed: 1,
+      };
+    }
   }
 
   private async createPlan(
@@ -425,39 +466,142 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
     let conversationalResponse: string | undefined;
 
     // Helper function to fix common GLM JSON issues
+    // Uses character-by-character parsing to avoid regex double-quote issues
     const fixGLMJSON = (json: string): string => {
-      let fixed = json;
+      let result = '';
 
-      // Fix 1: Empty string keys → proper keys
+      // First, fix empty string keys
+      let fixed = json;
       fixed = fixed.replace(/""\s*:\s*\[/g, '"steps": [');
       fixed = fixed.replace(/""\s*:\s*\{/g, '"parameters": {');
 
-      // Fix 2: Unquoted property names ONLY (not already quoted)
-      // Pattern: `path:` or `path :` → `"path":` but NOT `"path":`
-      fixed = fixed.replace(/([^\w"])(\w+)\s*:/g, '$1"$2":');
+      // Fix common GLM issues
+      // Fix "[ {" → "[{" (remove space before object in array)
+      fixed = fixed.replace(/\[\s+\{/g, '[{');
+      // Fix ", {" → ",{" (remove space before object in array)
+      fixed = fixed.replace(/,\s+\{/g, ',{');
 
-      // Fix 3: Missing quotes around string values after colons (when unquoted)
-      // Pattern: `"path": value` → `"path": "value"` (only if value isn't quoted/bracket)
-      fixed = fixed.replace(/:\s*([a-zA-Z0-9_\/\-.][^",}\]]*)([,\}])/g, ': "$1"$2');
+      // Fix missing commas between properties ("key1" "value1" → "key1": "value1")
+      // Pattern: quote, spaces, quote (with colon after) → quote, colon, space, quote
+      fixed = fixed.replace(/"\s+"/g, '": "');
 
-      // Fix 4: Extra spaces (but keep newlines for readability)
-      fixed = fixed.replace(/  +/g, ' ');
+      // Fix wrong tool names
+      fixed = fixed.replace(/"tool":\s*"_file"/g, '"tool": "write_file"');
+      fixed = fixed.replace(/"tool":\s*"create_file"/g, '"tool": "create_file"');
 
-      // Fix 5: Trailing commas
+      // Fix "description""value" pattern (missing colon and comma)
+      fixed = fixed.replace(/"description"\s+"/g, '"description": "');
+
+      // Then fix trailing commas
       fixed = fixed.replace(/,\s*}/g, '}');
       fixed = fixed.replace(/,\s*]/g, ']');
 
-      return fixed;
+      // Character-by-character parser to quote unquoted keys and values
+      let i = 0;
+      while (i < fixed.length) {
+        const char = fixed[i];
+
+        if (char === '"') {
+          // Already quoted - copy as-is
+          result += char;
+          i++;
+
+          // Find closing quote (handle escaped quotes)
+          while (i < fixed.length) {
+            // Check for escape sequence BEFORE adding to result
+            if (fixed[i] === '\\' && i + 1 < fixed.length) {
+              // Add backslash and the escaped char, then skip ahead
+              result += fixed[i];     // Add backslash
+              result += fixed[i + 1]; // Add escaped char
+              i += 2;                 // Skip both
+              continue;
+            }
+            result += fixed[i];
+            if (fixed[i] === '"') {
+              i++;
+              break;
+            }
+            i++;
+          }
+        } else if (char === '{' || char === '[' || char === '}' || char === ']' ||
+                   char === ':' || char === ',') {
+          result += char;
+          i++;
+        } else if (/\s/.test(char)) {
+          // Whitespace
+          result += char;
+          i++;
+        } else {
+          // Potential unquoted key or value
+          const start = i;
+
+          // Read the unquoted token
+          while (i < fixed.length && !/[{}[\]:,\s"]/.test(fixed[i])) {
+            i++;
+          }
+
+          const token = fixed.substring(start, i);
+
+          // Check if this is a key (followed by colon)
+          let isKey = false;
+          let j = i;
+          while (j < fixed.length && /\s/.test(fixed[j])) j++;
+          if (j < fixed.length && fixed[j] === ':') {
+            isKey = true;
+          }
+
+          // Check if this is a value (after colon, before comma/brace)
+          let isValue = false;
+          if (!isKey) {
+            // Look backwards for colon
+            let k = start - 1;
+            while (k >= 0 && /\s/.test(fixed[k])) k--;
+            if (k >= 0 && fixed[k] === ':') {
+              isValue = true;
+            }
+          }
+
+          if (isKey || isValue) {
+            // Quote the token
+            result += `"${token}"`;
+          } else {
+            // Keep as-is (boolean/null/number)
+            result += token;
+          }
+        }
+      }
+
+      // Clean up extra spaces (but keep structure)
+      result = result.replace(/  +/g, ' ');
+
+      return result;
     };
 
     try {
+      // First, strip markdown code blocks (```json ... ```) for GLM models
+      let contentToParse = fullContent;
+      if (isGLMModel) {
+        // Remove markdown code blocks: ```json ... ``` or ``` ... ```
+        const beforeLength = contentToParse.length;
+        // Remove opening ```json or ``` followed by newline
+        contentToParse = contentToParse.replace(/```json\s*\n?/gi, '');
+        contentToParse = contentToParse.replace(/```\s*\n?/gi, '');
+        console.log('Stripped markdown code blocks, length:', beforeLength, '->', contentToParse.length);
+        console.log('Content preview after strip:', contentToParse.substring(0, 200));
+      }
+
       // Try to find JSON in the response
-      let jsonMatch = fullContent.match(/\{[\s\S]*\}/);
+      let jsonMatch = contentToParse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        console.log('JSON match found, length:', jsonMatch[0].length);
+        console.log('JSON match preview (first 300 chars):', jsonMatch[0].substring(0, 300));
+      }
 
       // For GLM, try to fix common JSON issues before parsing
       if (jsonMatch && isGLMModel) {
         console.log('GLM detected, attempting to fix JSON...');
         const fixedJson = fixGLMJSON(jsonMatch[0]);
+        console.log('Fixed JSON length:', fixedJson.length, 'vs original:', jsonMatch[0].length);
         try {
           // Try parsing the fixed JSON
           const testParsed = JSON.parse(fixedJson);
@@ -466,13 +610,16 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
             console.log('GLM JSON fix successful');
           }
         } catch (e) {
-          console.log('GLM JSON fix did not help, using original');
+          console.log('GLM JSON fix did not help, error:', (e as Error).message);
         }
       }
 
       if (jsonMatch) {
         console.log('JSON pattern found, attempting to parse...');
         const jsonStr = jsonMatch[0];
+
+        // Log a sample of the JSON to debug
+        console.log('JSON string sample (first 500 chars):', jsonStr.substring(0, 500));
 
         // Try to parse the JSON first
         try {
@@ -505,9 +652,9 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
               conversationalResponse = extractedResponse;
             } else {
               // Check for text before the JSON
-              const jsonIndex = fullContent.indexOf(jsonMatch[0]);
-              const textBefore = jsonIndex > 0 ? fullContent.substring(0, jsonIndex).trim() : '';
-              const textAfter = fullContent.substring(jsonIndex + jsonMatch[0].length).trim();
+              const jsonIndex = contentToParse.indexOf(jsonMatch[0]);
+              const textBefore = jsonIndex > 0 ? contentToParse.substring(0, jsonIndex).trim() : '';
+              const textAfter = contentToParse.substring(jsonIndex + jsonMatch[0].length).trim();
 
               // Use text before/after JSON, or stringify the JSON for debugging
               if (textBefore) {
@@ -533,10 +680,16 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
         } catch (innerError) {
           // JSON parsing failed - malformed JSON or incomplete JSON at end
           console.warn('JSON parsing failed:', (innerError as Error).message);
+          // Log where the error might be
+          const errorPos = (innerError as any).matcher?.[0]?.index || -1;
+          if (errorPos >= 0) {
+            console.warn('Error near position:', errorPos);
+            console.warn('Context:', jsonStr.substring(Math.max(0, errorPos - 100), Math.min(jsonStr.length, errorPos + 100)));
+          }
           // Extract text before/after the JSON as the response
-          const jsonIndex = fullContent.indexOf(jsonMatch[0]);
-          const textBefore = jsonIndex > 0 ? fullContent.substring(0, jsonIndex).trim() : '';
-          const textAfter = fullContent.substring(jsonIndex + jsonMatch[0].length).trim();
+          const jsonIndex = contentToParse.indexOf(jsonMatch[0]);
+          const textBefore = jsonIndex > 0 ? contentToParse.substring(0, jsonIndex).trim() : '';
+          const textAfter = contentToParse.substring(jsonIndex + jsonMatch[0].length).trim();
 
           // Use text before JSON, text after JSON, or fall back to full content
           if (textBefore) {
@@ -589,6 +742,13 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
     console.log('Goal:', planData.goal || userRequest);
     console.log('Total steps:', steps.length);
     console.log('Needs approval:', steps.filter((s: any) => s.requiresApproval).map((s: any) => s.id));
+
+    // Update background task with plan info and initial steps
+    backgroundTaskManager.updateTask({
+      totalSteps: steps.length,
+      currentStep: `Executing ${steps.length} steps...`,
+      agentSteps: steps,
+    });
 
     return {
       id: Date.now().toString(),
