@@ -850,7 +850,7 @@ export default function ChatScreen() {
       <SafeAreaView style={styles.headerContainer} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => setShowFileExplorer(true)} style={styles.headerButton}>
-            <Ionicons name="list" size={24} color={theme.text} />
+            <Ionicons name="folder-outline" size={24} color={theme.text} />
           </TouchableOpacity>
 
           <View style={styles.headerCenter}>
