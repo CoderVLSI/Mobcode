@@ -590,7 +590,7 @@ class AIService {
         messages: messages,
         stream: true,
         temperature: 0.7,
-        max_tokens: 16384, // GLM-4.7 supports up to 128k output tokens
+        max_tokens: 65536, // GLM-4.7 supports up to 128k output tokens
       };
 
       console.log('GLM Request body:', JSON.stringify(requestBody, null, 2));
@@ -700,7 +700,7 @@ class AIService {
         body: JSON.stringify({
           model: glmModel,
           messages: messages,
-          max_tokens: 16384, // GLM-4.7 supports up to 128k output tokens
+          max_tokens: 65536, // GLM-4.7 supports up to 128k output tokens
           temperature: 0.7,
         }),
       });
