@@ -800,6 +800,60 @@ export default function ChatScreen() {
     }
   };
 
+  const handleCopyMessage = async (content: string) => {
+    try {
+      const { setStringAsync } = await import('expo-clipboard');
+      await setStringAsync(content);
+      Alert.alert('Copied', 'Message copied to clipboard');
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  };
+
+  const handleRewindToMessage = (messageId: string) => {
+    if (!currentChat) return;
+
+    const messageIndex = currentChat.messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) return;
+
+    const targetMessage = currentChat.messages[messageIndex];
+    const hasGitCheckpoint = !!targetMessage.gitCheckpointHash;
+
+    Alert.alert(
+      'Rewind Conversation',
+      hasGitCheckpoint
+        ? `This will restore code to this checkpoint and delete all messages after this point. Continue?`
+        : `This will delete all messages after this point. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Rewind',
+          style: 'destructive',
+          onPress: async () => {
+            // Reset Git to checkpoint if available
+            if (hasGitCheckpoint && targetMessage.gitCheckpointHash) {
+              try {
+                const { gitService } = await import('../utils/gitService');
+                const success = await gitService.resetToCheckpoint(targetMessage.gitCheckpointHash);
+                if (success) {
+                  Alert.alert('Success', 'Code restored to checkpoint');
+                }
+              } catch (error) {
+                console.error('Failed to reset git checkpoint:', error);
+              }
+            }
+
+            // Truncate messages
+            const rewindedMessages = currentChat.messages.slice(0, messageIndex + 1);
+            const updatedChat = { ...currentChat, messages: rewindedMessages };
+            setCurrentChat(updatedChat);
+            await storage.saveChat(updatedChat);
+          },
+        },
+      ]
+    );
+  };
+
   const handleAddCustomModel = async () => {
     if (!newModelName.trim() || !newModelEndpoint.trim() || !newModelApiKey.trim()) {
       Alert.alert('Error', 'Please fill in all fields');
@@ -986,6 +1040,8 @@ export default function ChatScreen() {
                 styles={styles}
                 theme={theme}
                 onApprovalAction={handleInlineApproval}
+                onCopy={handleCopyMessage}
+                onRewind={handleRewindToMessage}
               />
               {message.codeDiff && showDiffs[message.id] && (
                 <CodeDiffViewer
@@ -1696,11 +1752,15 @@ function MessageBubble({
   styles,
   theme,
   onApprovalAction,
+  onCopy,
+  onRewind,
 }: {
   message: Message;
   styles: any;
   theme: Theme;
   onApprovalAction: (messageId: string, approved: boolean) => void;
+  onCopy: (content: string) => void;
+  onRewind: (messageId: string) => void;
 }) {
   const isUser = message.role === 'user';
   const isApproval = !!message.approval;
@@ -1756,6 +1816,23 @@ function MessageBubble({
             )}
           </>
         )}
+        {/* Action buttons */}
+        <View style={styles.messageActions}>
+          <TouchableOpacity
+            style={styles.messageActionButton}
+            onPress={() => onCopy(message.content)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="copy-outline" size={14} color={theme.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.messageActionButton}
+            onPress={() => onRewind(message.id)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="arrow-undo-outline" size={14} color={theme.textSecondary} />
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -2581,6 +2658,17 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     lineHeight: 24, // Better readability
     fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto', // Ensure good font
     color: theme.text,
+  },
+  messageActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+    opacity: 0.6,
+  },
+  messageActionButton: {
+    padding: 4,
+    borderRadius: 4,
   },
   approvalCard: {
     backgroundColor: theme.surface,
