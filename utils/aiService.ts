@@ -172,7 +172,7 @@ class AIService {
       xhr.send(JSON.stringify({
         model: model === 'gpt-4o-mini' ? 'gpt-4o-mini' : 'gpt-4o',
         messages: messages,
-        max_tokens: 16000,
+        max_tokens: model === 'gpt-4o-mini' ? 16384 : 4096,  // GPT-4o-mini: 16384, GPT-4o: 4096
         stream: true,
       }));
     });
@@ -243,7 +243,7 @@ class AIService {
 
       xhr.send(JSON.stringify({
         model: model === 'claude-3-haiku' ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022',
-        max_tokens: 16000,
+        max_tokens: 8192,  // Claude 3.5 max output tokens
         messages: messages.filter((m) => m.role !== 'system'),
         system: messages.find((m) => m.role === 'system')?.content || '',
         stream: true,
@@ -644,7 +644,7 @@ class AIService {
         body: JSON.stringify({
           model: model === 'gpt-4o-mini' ? 'gpt-4o-mini' : 'gpt-4o',
           messages: messages,
-          max_tokens: 16000,
+          max_tokens: model === 'gpt-4o-mini' ? 16384 : 4096,  // GPT-4o-mini: 16384, GPT-4o: 4096
         }),
       });
 
@@ -738,7 +738,7 @@ class AIService {
         },
         body: JSON.stringify({
           model: model === 'claude-3-haiku' ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022',
-          max_tokens: 16000,
+          max_tokens: 8192,  // Claude 3.5 max output tokens
           messages: messages.filter((m) => m.role !== 'system'),
           system: messages.find((m) => m.role === 'system')?.content || '',
         }),
