@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme, Theme } from '../context/ThemeContext';
 import { aiService, AIMessage } from '../utils/aiService';
 import { AI_MODELS } from '../constants/Models';
-import { CustomModel } from '../utils/storage';
+import { CustomModel, storage } from '../utils/storage';
 
 interface CodeArenaProps {
     visible: boolean;
@@ -23,6 +23,7 @@ interface CodeArenaProps {
     anthropicKey?: string;
     geminiKey?: string;
     glmKey?: string;
+    openRouterKey?: string;
 }
 
 interface ModelResponse {
@@ -41,15 +42,58 @@ export function CodeArena({
     anthropicKey,
     geminiKey,
     glmKey,
+    openRouterKey,
 }: CodeArenaProps) {
     const { theme, isDarkMode } = useTheme();
     const styles = useMemo(() => createStyles(theme), [theme]);
 
     const [modelA, setModelA] = useState('gemini-2.5-flash');
-    const [modelB, setModelB] = useState('glm-4.7');
+    const [modelB, setModelB] = useState('glm-4.7-coder');
     const [inputText, setInputText] = useState('');
     const [showModelPickerA, setShowModelPickerA] = useState(false);
     const [showModelPickerB, setShowModelPickerB] = useState(false);
+    const [remoteModels, setRemoteModels] = useState<any[]>([]);
+    const [isRefreshingModels, setIsRefreshingModels] = useState(false);
+
+    // Load cached models
+    React.useEffect(() => {
+        loadRemoteModels();
+    }, []);
+
+    const loadRemoteModels = async () => {
+        const cached = await storage.getOpenRouterModels();
+        if (cached && cached.length > 0) {
+            setRemoteModels(cached);
+        } else if (openRouterKey) {
+            // Auto-fetch if no cache but key exists
+            refreshRemoteModels();
+        }
+    };
+
+    const refreshRemoteModels = async () => {
+        if (!openRouterKey || isRefreshingModels) return;
+        setIsRefreshingModels(true);
+        try {
+            const models = await aiService.fetchOpenRouterModels(openRouterKey);
+            if (models.length > 0) {
+                // Map to our format if needed, OpenRouter returns { id, name, ... }
+                // We just keep them raw and map in allModels
+                const mapped = models.map((m: any) => ({
+                    id: `openrouter/${m.id}`, // Prefix to avoid collisions
+                    name: m.name || m.id,
+                    description: m.description || 'OpenRouter Model',
+                    icon: 'cloud-outline',
+                    provider: 'OpenRouter'
+                }));
+                await storage.setOpenRouterModels(mapped);
+                setRemoteModels(mapped);
+            }
+        } catch (e) {
+            console.error('Failed to refresh models', e);
+        } finally {
+            setIsRefreshingModels(false);
+        }
+    };
 
     const [responseA, setResponseA] = useState<ModelResponse>({ content: '', isLoading: false });
     const [responseB, setResponseB] = useState<ModelResponse>({ content: '', isLoading: false });
@@ -60,6 +104,7 @@ export function CodeArena({
     const allModels = [
         ...AI_MODELS.filter(m => m.id !== 'local-llama'),
         ...customModels.map(m => ({ id: m.id, name: m.name, description: 'Custom model', icon: 'key' })),
+        ...remoteModels,
     ];
 
     const getApiKey = (model: string) => {
@@ -67,6 +112,7 @@ export function CodeArena({
         if (model.startsWith('claude') || model.startsWith('anthropic')) return anthropicKey;
         if (model.startsWith('gemini')) return geminiKey;
         if (model.startsWith('glm')) return glmKey;
+        if (model.startsWith('openrouter')) return openRouterKey;
         return undefined;
     };
 
@@ -168,37 +214,48 @@ export function CodeArena({
                     onPress={() => setShowPicker(false)}
                 >
                     <View style={styles.pickerContent}>
-                        <Text style={styles.pickerTitle}>Select {label}</Text>
-                        <ScrollView style={styles.pickerList}>
-                            {allModels.map(model => (
-                                <TouchableOpacity
-                                    key={model.id}
-                                    style={[
-                                        styles.pickerOption,
-                                        currentModel === model.id && styles.pickerOptionSelected,
-                                    ]}
-                                    onPress={() => {
-                                        onSelect(model.id);
-                                        setShowPicker(false);
-                                    }}
-                                >
-                                    <Ionicons
-                                        name={model.icon as any}
-                                        size={18}
-                                        color={currentModel === model.id ? theme.accent : theme.text}
-                                    />
-                                    <Text
+                        <View style={styles.pickerContent}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                <Text style={styles.pickerTitle}>Select {label}</Text>
+                                {openRouterKey && (
+                                    <TouchableOpacity onPress={refreshRemoteModels} disabled={isRefreshingModels}>
+                                        {isRefreshingModels ?
+                                            <ActivityIndicator size="small" color={theme.accent} /> :
+                                            <Ionicons name="refresh" size={20} color={theme.textSecondary} />
+                                        }
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                            <ScrollView style={styles.pickerList}>
+                                {allModels.map(model => (
+                                    <TouchableOpacity
+                                        key={model.id}
                                         style={[
-                                            styles.pickerOptionText,
-                                            currentModel === model.id && { color: theme.accent },
+                                            styles.pickerOption,
+                                            currentModel === model.id && styles.pickerOptionSelected,
                                         ]}
+                                        onPress={() => {
+                                            onSelect(model.id);
+                                            setShowPicker(false);
+                                        }}
                                     >
-                                        {model.name}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-                    </View>
+                                        <Ionicons
+                                            name={model.icon as any}
+                                            size={18}
+                                            color={currentModel === model.id ? theme.accent : theme.text}
+                                        />
+                                        <Text
+                                            style={[
+                                                styles.pickerOptionText,
+                                                currentModel === model.id && { color: theme.accent },
+                                            ]}
+                                        >
+                                            {model.name}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        </View>
                 </TouchableOpacity>
             </Modal>
         </View>
@@ -341,7 +398,8 @@ const createStyles = (theme: Theme) =>
             justifyContent: 'space-between',
             backgroundColor: theme.surface,
             padding: 10,
-            borderRadius: 8,
+            paddingHorizontal: 12,
+            borderRadius: 6,
             borderWidth: 1,
             borderColor: theme.border,
         },
@@ -351,10 +409,12 @@ const createStyles = (theme: Theme) =>
             flex: 1,
         },
         vsText: {
-            fontSize: 14,
-            fontWeight: 'bold',
+            fontSize: 10,
+            fontWeight: '900',
             color: theme.textSecondary,
-            marginTop: 16,
+            marginTop: 18,
+            textTransform: 'uppercase',
+            opacity: 0.5,
         },
         inputContainer: {
             flexDirection: 'row',
@@ -377,9 +437,9 @@ const createStyles = (theme: Theme) =>
         },
         sendButton: {
             backgroundColor: theme.accent,
-            width: 44,
-            height: 44,
-            borderRadius: 22,
+            width: 40,
+            height: 40,
+            borderRadius: 8,
             alignItems: 'center',
             justifyContent: 'center',
         },
