@@ -853,11 +853,7 @@ export default function ChatScreen() {
             <Ionicons name="folder-outline" size={24} color={theme.text} />
           </TouchableOpacity>
 
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle} numberOfLines={1}>
-              {currentChat?.title || 'AI Chat'}
-            </Text>
-          </View>
+
 
           <View style={styles.headerRight}>
             <TouchableOpacity onPress={() => setShowSkillsManager(true)} style={styles.headerButton}>
