@@ -169,7 +169,11 @@ class AutonomousAgent {
       // Get conversational summary of results
       let conversationalSummary = `Completed ${completed} steps, ${failed} failed`;
 
-      if (completed > 0 || failed > 0) {
+      // Only generate AI summary for complex tasks (3+ steps)
+      // Simple tasks get a quick static summary to save API calls
+      const needsSummary = completed >= 3 || failed > 0;
+
+      if (needsSummary && (completed > 0 || failed > 0)) {
         console.log('=== GENERATING CONVERSATIONAL SUMMARY ===');
         try {
           const toolResults = plan.steps
@@ -240,6 +244,15 @@ CRITICAL RULES:
           console.error('Failed to generate conversational summary:', e);
           // Fall back to default summary
         }
+      } else if (completed > 0) {
+        // Quick static summary for simple tasks (1-2 steps) - no API call needed
+        console.log('=== SKIPPING SUMMARY API (simple task) ===');
+        const descriptions = plan.steps
+          .filter(s => s.status === 'completed')
+          .map(s => s.description);
+        conversationalSummary = descriptions.length === 1
+          ? descriptions[0]
+          : descriptions.join('. ');
       }
 
       console.log('=== AGENT TASK COMPLETE ===');
@@ -329,12 +342,15 @@ CRITICAL RULES:
         content: isGLMModel ? `You are an AI coding assistant. For file/code operations, respond ONLY with JSON:
 {"goal": "task","steps":[{"id":"1","description":"what","tool":"tool","parameters":{},"requiresApproval":true}]}
 
-IMPORTANT RULES:
-- For DELETE operations: Use delete_file tool with {"path": "folder_or_file_to_delete"}
-- For CREATE operations: Use create_file or write_file
-- ALWAYS create complete plans (don't just list directories when user wants to delete)
-- If user says "delete X", create a delete_file step directly, don't list first
-- Mark requiresApproval: true for delete_file, write_file, create_file, run_command
+CRITICAL WORKFLOW FOR DELETE:
+- If EXACT path is known: Use delete_file directly
+- If path is UNCLEAR (user says "delete the X folders" but you don't know exact path):
+  1. First step: list_directory with path "." to find folders
+  2. Second step: delete_file with the actual path found
+- NEVER guess paths - always list first if uncertain
+
+For CREATE operations: Use create_file or write_file directly.
+Mark requiresApproval: true for delete_file, write_file, create_file, run_command
 
 Tools: ${availableTools.join(', ')}
 
@@ -353,8 +369,13 @@ ${relevantSkills ? `Relevant Skills:\n${relevantSkills}` : ''}
 ## JSON Format:
 {"goal": "task","steps":[{"id":"x","description":"what","tool":"tool","parameters":{},"requiresApproval":false}]}
 
-## Rules:
-- For DELETE operations: Use delete_file directly with the path, don't just list directories first
+## CRITICAL - DELETE Operations:
+- If exact path is known: delete_file directly
+- If path is uncertain: list_directory FIRST, then delete_file with actual path
+- NEVER guess folder/file names - always verify with list_directory first
+- Example: "Delete tic tac toe folders" → list_directory(".") → delete_file("tictactoe")
+
+## Other Rules:
 - Create projects in separate folders (e.g., "myapp/")
 - Files needing approval: write_file, create_file, delete_file, run_command, git_push
 - Multi-file: create in parallel when possible
