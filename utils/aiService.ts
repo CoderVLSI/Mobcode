@@ -1,6 +1,84 @@
 import { CustomModel } from './storage';
 import { LOCAL_MODEL_ID, streamLocalChat } from './localLlama';
 
+// === MODEL MAPPING HELPERS ===
+
+function getOpenAIModelId(model: string): string {
+  const modelMap: Record<string, string> = {
+    // 2026 Models
+    'gpt-5.2': 'gpt-5.2',
+    // 2025 Models
+    'gpt-4o': 'gpt-4o',
+    'gpt-4o-mini': 'gpt-4o-mini',
+  };
+  return modelMap[model] || model;
+}
+
+function getOpenAIMaxTokens(model: string): number {
+  // 2026 Models
+  if (model === 'gpt-5.2') return 32768; // GPT-5.2 supports up to 400k+
+  // 2025 Models
+  if (model === 'gpt-4o-mini') return 16384;
+  if (model === 'gpt-4o') return 4096;
+  // Default
+  return 4096;
+}
+
+function getAnthropicModelId(model: string): string {
+  const modelMap: Record<string, string> = {
+    // 2026 Models
+    'claude-opus-4-5': 'claude-opus-4-5-20251101',
+    'claude-sonnet-4-5': 'claude-sonnet-4-5-20250929',
+    'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+    // 2025 Models
+    'claude-3.5-sonnet': 'claude-3-5-sonnet-20241022',
+    'claude-3-haiku': 'claude-3-5-haiku-20241022',
+  };
+  return modelMap[model] || model;
+}
+
+function getAnthropicMaxTokens(model: string): number {
+  // Claude 4.5 (2026) - all support 8192 output
+  if (model.includes('claude-opus-4-5') || model.includes('claude-sonnet-4-5') || model.includes('claude-haiku-4-5')) {
+    return 8192;
+  }
+  // Claude 3.5 (2025)
+  if (model.includes('claude-3.5-sonnet') || model.includes('claude-3-haiku')) {
+    return 8192;
+  }
+  // Default
+  return 8192;
+}
+
+function getGeminiModelId(model: string): string {
+  const modelMap: Record<string, string> = {
+    // 2026 Models
+    'gemini-3-pro-preview-11-2025': 'gemini-3-pro-preview-11-2025',
+    'gemini-3-flash-preview': 'gemini-3-flash-preview',
+    // 2025 Models
+    'gemini-2.5-pro': 'gemini-2.5-pro',
+    'gemini-2.5-flash': 'gemini-2.5-flash',
+    'gemini-2.5-flash-lite': 'gemini-2.5-flash-lite',
+    'gemini-1.5-pro': 'gemini-1.5-pro',
+    'gemini-1.5-flash': 'gemini-1.5-flash',
+  };
+  return modelMap[model] || model;
+}
+
+function getGeminiMaxTokens(model: string): number {
+  // Gemini 3 (2026) - supports 8192 output
+  if (model.includes('gemini-3-pro') || model.includes('gemini-3-flash')) {
+    return 8192;
+  }
+  // Gemini 2.5 (2025)
+  if (model.includes('gemini-2.5-pro')) return 8192;
+  if (model.includes('gemini-2.5-flash')) return 8192;
+  // Gemini 1.5
+  if (model.includes('gemini-1.5-flash')) return 8192;
+  // Default
+  return 8192;
+}
+
 export interface AIMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -175,9 +253,9 @@ class AIService {
       };
 
       xhr.send(JSON.stringify({
-        model: model === 'gpt-4o-mini' ? 'gpt-4o-mini' : 'gpt-4o',
+        model: getOpenAIModelId(model),
         messages: messages,
-        max_tokens: model === 'gpt-4o-mini' ? 16384 : 4096,  // GPT-4o-mini: 16384, GPT-4o: 4096
+        max_tokens: getOpenAIMaxTokens(model),
         stream: true,
       }));
     });
@@ -247,8 +325,8 @@ class AIService {
       };
 
       xhr.send(JSON.stringify({
-        model: model === 'claude-3-haiku' ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022',
-        max_tokens: 8192,  // Claude 3.5 max output tokens
+        model: getAnthropicModelId(model),
+        max_tokens: getAnthropicMaxTokens(model),
         messages: messages.filter((m) => m.role !== 'system'),
         system: messages.find((m) => m.role === 'system')?.content || '',
         stream: true,
@@ -271,16 +349,8 @@ class AIService {
         return;
       }
 
-      // Use stable Gemini model IDs directly.
-      const modelMap: Record<string, string> = {
-        'gemini-2.5-flash': 'gemini-2.5-flash',
-        'gemini-2.5-flash-lite': 'gemini-2.5-flash-lite',
-        'gemini-2.5-pro': 'gemini-2.5-pro',
-        'gemini-1.5-flash': 'gemini-1.5-flash',
-        'gemini-1.5-pro': 'gemini-1.5-pro',
-      };
-
-      const geminiModel = modelMap[model] || model;
+      // Use helper to get correct Gemini model ID
+      const geminiModel = getGeminiModelId(model);
 
       // Build contents array for Gemini API
       const contents = messages
@@ -477,7 +547,7 @@ class AIService {
       const requestBody: any = {
         contents: contents,
         generationConfig: {
-          maxOutputTokens: 8192,  // Increased from 2000 to match Gemini's limit
+          maxOutputTokens: getGeminiMaxTokens(model),
           temperature: 0.7,
         }
       };
@@ -647,9 +717,9 @@ class AIService {
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: model === 'gpt-4o-mini' ? 'gpt-4o-mini' : 'gpt-4o',
+          model: getOpenAIModelId(model),
           messages: messages,
-          max_tokens: model === 'gpt-4o-mini' ? 16384 : 4096,  // GPT-4o-mini: 16384, GPT-4o: 4096
+          max_tokens: getOpenAIMaxTokens(model),
         }),
       });
 
@@ -742,8 +812,8 @@ class AIService {
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: model === 'claude-3-haiku' ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022',
-          max_tokens: 8192,  // Claude 3.5 max output tokens
+          model: getAnthropicModelId(model),
+          max_tokens: getAnthropicMaxTokens(model),
           messages: messages.filter((m) => m.role !== 'system'),
           system: messages.find((m) => m.role === 'system')?.content || '',
         }),
