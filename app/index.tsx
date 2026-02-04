@@ -837,6 +837,7 @@ export default function ChatScreen() {
   };
 
   return (
+    <>
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => setShowFileExplorer(true)} style={styles.headerButton}>
@@ -1533,6 +1534,7 @@ export default function ChatScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+    </>
   );
 }
 
