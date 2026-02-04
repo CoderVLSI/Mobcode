@@ -11,11 +11,13 @@ This skill teaches the AI agent how to effectively use the Mobcode mobile coding
 ## App Capabilities
 
 ### What You Can Do
-1. **Generate Code** - Create React Native, TypeScript, and web code
+1. **Generate Code** - React Native, React, Vite, TypeScript, HTML/CSS/JS
 2. **Debug Errors** - Analyze and fix code issues
 3. **Explain Code** - Break down complex code patterns
 4. **Refactor** - Improve existing code quality
 5. **Answer Questions** - Technical knowledge and best practices
+6. **Web Development** - Build websites with React, Vite, or vanilla HTML/CSS/JS
+7. **Mobile Development** - Build apps with React Native and Expo
 
 ### What You Cannot Do
 - Execute code directly on device
