@@ -37,6 +37,7 @@ import { ReactPreview } from '../components/ReactPreview';
 import { ComponentPreview } from '../components/ComponentPreview';
 import { MessageContent } from '../components/MessageContent';
 import { ToolsHelp } from '../components/ToolsHelp';
+import { SkillsManager } from '../components/SkillsManager';
 import { AI_MODELS } from '../constants/Models';
 import {
   LOCAL_MODEL_ID,
@@ -94,6 +95,7 @@ export default function ChatScreen() {
   const [htmlPreview, setHtmlPreview] = useState<{ path: string; name: string } | null>(null);
   const [reactPreview, setReactPreview] = useState<{ path: string; name: string } | null>(null);
   const [previewComponentId, setPreviewComponentId] = useState<string | null>(null);
+  const [showSkillsManager, setShowSkillsManager] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const approvalResolverRef = useRef<((value: boolean) => void) | null>(null);
   const messageCounterRef = useRef(0);
@@ -837,51 +839,56 @@ export default function ChatScreen() {
   };
 
   return (
-    <>
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => setShowFileExplorer(true)} style={styles.headerButton}>
-          <Ionicons name="list" size={24} color={theme.text} />
-        </TouchableOpacity>
+    <View style={styles.container}>
+      {/* Header - fixed at top */}
+      <SafeAreaView style={styles.headerContainer} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => setShowFileExplorer(true)} style={styles.headerButton}>
+            <Ionicons name="list" size={24} color={theme.text} />
+          </TouchableOpacity>
 
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {currentChat?.title || 'AI Chat'}
-          </Text>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {currentChat?.title || 'AI Chat'}
+            </Text>
+          </View>
+
+          <View style={styles.headerRight}>
+            <TouchableOpacity onPress={() => setShowSkillsManager(true)} style={styles.headerButton}>
+              <Ionicons name="library-outline" size={24} color={theme.accent} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowToolsHelp(true)} style={styles.headerButton}>
+              <Ionicons name="help-circle-outline" size={24} color={theme.accent} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowTaskTracker(true)} style={styles.headerButton}>
+              <Ionicons name="list-outline" size={24} color={agentSteps.length > 0 ? theme.accent : theme.text} />
+              {agentSteps.length > 0 && (
+                <View style={styles.headerBadge}>
+                  <Text style={styles.headerBadgeText}>{agentSteps.filter(s => s.status !== 'completed').length}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowGitPanel(true)} style={styles.headerButton}>
+              <Ionicons name="logo-github" size={24} color={theme.text} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowHistory(true)} style={styles.headerButton}>
+              <Ionicons name="time-outline" size={24} color={theme.text} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.headerButton}>
+              <Ionicons name="settings-outline" size={24} color={theme.text} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={createNewChat} style={styles.headerButton}>
+              <Ionicons name="add" size={24} color={theme.accent} />
+            </TouchableOpacity>
+          </View>
         </View>
+      </SafeAreaView>
 
-        <View style={styles.headerRight}>
-          <TouchableOpacity onPress={() => setShowToolsHelp(true)} style={styles.headerButton}>
-            <Ionicons name="help-circle-outline" size={24} color={theme.accent} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowTaskTracker(true)} style={styles.headerButton}>
-            <Ionicons name="list-outline" size={24} color={agentSteps.length > 0 ? theme.accent : theme.text} />
-            {agentSteps.length > 0 && (
-              <View style={styles.headerBadge}>
-                <Text style={styles.headerBadgeText}>{agentSteps.filter(s => s.status !== 'completed').length}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowGitPanel(true)} style={styles.headerButton}>
-            <Ionicons name="logo-github" size={24} color={theme.text} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowHistory(true)} style={styles.headerButton}>
-            <Ionicons name="time-outline" size={24} color={theme.text} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.headerButton}>
-            <Ionicons name="settings-outline" size={24} color={theme.text} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={createNewChat} style={styles.headerButton}>
-            <Ionicons name="add" size={24} color={theme.accent} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-
-      <View style={{ flex: 1, flexDirection: 'column' }}>
+      {/* Main content area - flex:1 allows it to shrink when keyboard appears */}
+      <View style={styles.contentArea}>
         <ScrollView
           ref={scrollViewRef}
-          style={{ flex: 1 }}
+          style={styles.messagesScroll}
           contentContainerStyle={styles.messagesContent}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
@@ -915,7 +922,7 @@ export default function ChatScreen() {
           {isTyping && <TypingIndicator styles={styles} theme={theme} />}
         </ScrollView>
 
-        <View style={[styles.bottomBar, { paddingBottom: 12 + insets.bottom }]}>
+        <View style={styles.bottomBar}>
           {(attachedFiles.length > 0 || attachedImages.length > 0) && (
             <ScrollView horizontal style={styles.attachmentsScroll} contentContainerStyle={styles.attachmentsScrollContent}>
               {attachedFiles.map((file) => (
@@ -988,62 +995,61 @@ export default function ChatScreen() {
         </View>
       </View>
 
-        {/* Compact model picker modal */}
-        <Modal visible={showModelPicker} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowModelPicker(false)} />
-            <View style={styles.compactPickerContent}>
-              <Text style={styles.pickerTitle}>Select Model</Text>
-              <ScrollView style={styles.pickerList}>
-                {AI_MODELS.filter(m => LOCAL_MODEL_AVAILABLE || m.id !== LOCAL_MODEL_ID).map((model) => (
-                  <TouchableOpacity
-                    key={model.id}
-                    style={[styles.pickerOption, selectedModel === model.id && styles.pickerOptionSelected]}
-                    onPress={() => { handleModelChange(model.id); setShowModelPicker(false); }}
-                  >
-                    <Ionicons name={model.icon as any} size={18} color={selectedModel === model.id ? theme.accent : theme.text} />
-                    <View style={styles.pickerOptionText}>
-                      <Text style={[styles.pickerName, selectedModel === model.id && { color: theme.accent }]}>{model.name}</Text>
-                      <Text style={styles.pickerDesc}>{model.description}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-                {customModels.map((model) => (
-                  <TouchableOpacity
-                    key={model.id}
-                    style={[styles.pickerOption, selectedModel === model.id && styles.pickerOptionSelected]}
-                    onPress={() => { handleModelChange(model.id); setShowModelPicker(false); }}
-                  >
-                    <Ionicons name="key" size={18} color={selectedModel === model.id ? theme.accent : theme.text} />
-                    <View style={styles.pickerOptionText}>
-                      <Text style={[styles.pickerName, selectedModel === model.id && { color: theme.accent }]}>{model.name}</Text>
-                      <Text style={styles.pickerDesc}>Custom model</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
+      {/* Compact model picker modal */}
+      <Modal visible={showModelPicker} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowModelPicker(false)} />
+          <View style={styles.compactPickerContent}>
+            <Text style={styles.pickerTitle}>Select Model</Text>
+            <ScrollView style={styles.pickerList}>
+              {AI_MODELS.filter(m => LOCAL_MODEL_AVAILABLE || m.id !== LOCAL_MODEL_ID).map((model) => (
+                <TouchableOpacity
+                  key={model.id}
+                  style={[styles.pickerOption, selectedModel === model.id && styles.pickerOptionSelected]}
+                  onPress={() => { handleModelChange(model.id); setShowModelPicker(false); }}
+                >
+                  <Ionicons name={model.icon as any} size={18} color={selectedModel === model.id ? theme.accent : theme.text} />
+                  <View style={styles.pickerOptionText}>
+                    <Text style={[styles.pickerName, selectedModel === model.id && { color: theme.accent }]}>{model.name}</Text>
+                    <Text style={styles.pickerDesc}>{model.description}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+              {customModels.map((model) => (
+                <TouchableOpacity
+                  key={model.id}
+                  style={[styles.pickerOption, selectedModel === model.id && styles.pickerOptionSelected]}
+                  onPress={() => { handleModelChange(model.id); setShowModelPicker(false); }}
+                >
+                  <Ionicons name="key" size={18} color={selectedModel === model.id ? theme.accent : theme.text} />
+                  <View style={styles.pickerOptionText}>
+                    <Text style={[styles.pickerName, selectedModel === model.id && { color: theme.accent }]}>{model.name}</Text>
+                    <Text style={styles.pickerDesc}>Custom model</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
-        </Modal>
+        </View>
+      </Modal>
 
-        <Modal visible={showLocalModelModal} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <View style={styles.downloadModalContent}>
-              <Text style={styles.modalTitle}>Downloading Local Model</Text>
-              <Text style={styles.settingValue}>This is a one-time download and may take a few minutes.</Text>
-              <View style={styles.progressBar}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${Math.round(localModelProgress * 100)}%` },
-                  ]}
-                />
-              </View>
-              <Text style={styles.progressLabel}>{Math.round(localModelProgress * 100)}%</Text>
+      <Modal visible={showLocalModelModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.downloadModalContent}>
+            <Text style={styles.modalTitle}>Downloading Local Model</Text>
+            <Text style={styles.settingValue}>This is a one-time download and may take a few minutes.</Text>
+            <View style={styles.progressBar}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${Math.round(localModelProgress * 100)}%` },
+                ]}
+              />
             </View>
+            <Text style={styles.progressLabel}>{Math.round(localModelProgress * 100)}%</Text>
           </View>
-        </Modal>
-      </SafeAreaView>
+        </View>
+      </Modal>
 
       <ChatHistory
         visible={showHistory}
@@ -1130,6 +1136,11 @@ export default function ChatScreen() {
       <ToolsHelp
         visible={showToolsHelp}
         onClose={() => setShowToolsHelp(false)}
+      />
+
+      <SkillsManager
+        visible={showSkillsManager}
+        onClose={() => setShowSkillsManager(false)}
       />
 
       <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
@@ -1534,7 +1545,7 @@ export default function ChatScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-    </>
+    </View>
   );
 }
 
@@ -2057,6 +2068,14 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     flex: 1,
     backgroundColor: theme.background,
   },
+  headerContainer: {
+    backgroundColor: theme.surface,
+  },
+  contentArea: {
+    flex: 1,
+    flexDirection: 'column',
+    backgroundColor: theme.background,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2107,6 +2126,9 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     backgroundColor: theme.background,
     borderTopWidth: 1,
     borderTopColor: theme.border,
+  },
+  messagesScroll: {
+    flex: 1,
   },
   attachmentsScroll: {
     maxHeight: 32,

@@ -1,5 +1,6 @@
 import { aiService, AIMessage } from './aiService';
 import { toolRegistry, ToolResult } from './toolRegistry';
+import { skillManager } from './skillManager';
 
 export interface AgentStep {
   id: string;
@@ -244,6 +245,11 @@ CRITICAL RULES:
 
     const toolsDesc = toolRegistry.formatForAI();
 
+    // Load relevant skills for this task
+    console.log('Loading relevant skills...');
+    const relevantSkills = await skillManager.getRelevantSkillsForAI(userRequest, 3);
+    console.log('Skills loaded:', relevantSkills ? 'Yes' : 'No');
+
     let fullContent = '';
     let isJson = false;
     let checkedJson = false;
@@ -281,6 +287,11 @@ CRITICAL RULES:
 
 ## Available Tools:
 ${toolsDesc}
+
+${relevantSkills ? `
+## Available Skills/Guides:
+${relevantSkills}
+` : ''}
 
 ## IMPORTANT: Project Structure Rules
 
