@@ -257,6 +257,10 @@ CRITICAL RULES:
     let checkedJson = false;
     let hasStreamed = false;
 
+    // Detect if using GLM model for specific prompt handling
+    const isGLMModel = model.includes('glm') || model.includes('GLM');
+    console.log('Is GLM model:', isGLMModel);
+
     const sanitizedHistory = history
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .filter((m) => m.content && m.content.trim().length > 0);
@@ -266,7 +270,55 @@ CRITICAL RULES:
     const response = await aiService.streamChat([
       {
         role: 'system',
-        content: `You are a helpful coding assistant with access to development tools. You can help with:
+        content: isGLMModel ? `You are a helpful coding assistant with access to development tools.
+
+## CRITICAL JSON FORMAT INSTRUCTIONS
+
+When the user asks you to DO something (create files, modify code, setup projects), you MUST respond with valid JSON in this EXACT format:
+
+\`\`\`json
+{
+  "goal": "brief description of what you're doing",
+  "steps": [
+    {
+      "id": "unique_step_id",
+      "description": "what this step does",
+      "tool": "exact_tool_name",
+      "parameters": {
+        "parameter_name": "value"
+      },
+      "requiresApproval": false
+    }
+  ]
+}
+\`\`\`
+
+IMPORTANT JSON RULES:
+- The JSON MUST be complete and valid
+- Use "goal" (not empty string)
+- Use "steps" (not empty string)
+- Each step MUST have: id, description, tool, parameters, requiresApproval
+- Use "parameters" (not empty string)
+- All property names must be in quotes with colons
+- NO conversational text before or after the JSON
+
+## Available Tools:
+${toolsDesc}
+
+## When to Use JSON:
+- "Create a file" or "Make a file"
+- "Add a feature"
+- "Setup a project"
+- "Install packages"
+- "List/search files"
+
+## When to Just Chat (no JSON):
+- Greetings
+- Questions
+- Explanations
+- Casual conversation
+
+Always create new projects in separate folders with descriptive names!` : `You are a helpful coding assistant with access to development tools. You can help with:
 
 1. **Conversational help** - Answer questions, explain concepts, chat naturally
 2. **Code tasks** - Create files, modify code, setup projects, run commands
@@ -372,9 +424,42 @@ Be friendly and helpful! If someone just wants to chat, have a normal conversati
     let planData: any = { goal: userRequest, steps: [] };
     let conversationalResponse: string | undefined;
 
+    // Helper function to fix common GLM JSON issues
+    const fixGLMJSON = (json: string): string => {
+      // Fix empty string keys that GLM sometimes generates
+      let fixed = json
+        // Replace `"": [` with `"steps": [`
+        .replace(/""\s*:\s*\[/g, '"steps": [')
+        // Replace `"": {}` with `"parameters": {}`
+        .replace(/""\s*:\s*\{/g, '"parameters": {')
+        // Fix missing colons after property names (e.g., `description "text` → `description": "text`)
+        .replace(/"([a-zA-Z_][a-zA-Z0-9_]*)"\s+"([^"]*)"/g, '"$1": "$2"')
+        // Fix trailing commas
+        .replace(/,\s*}/g, '}')
+        .replace(/,\s*]/g, ']');
+      return fixed;
+    };
+
     try {
       // Try to find JSON in the response
-      const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
+      let jsonMatch = fullContent.match(/\{[\s\S]*\}/);
+
+      // For GLM, try to fix common JSON issues before parsing
+      if (jsonMatch && isGLMModel) {
+        console.log('GLM detected, attempting to fix JSON...');
+        const fixedJson = fixGLMJSON(jsonMatch[0]);
+        try {
+          // Try parsing the fixed JSON
+          const testParsed = JSON.parse(fixedJson);
+          if (testParsed) {
+            jsonMatch[0] = fixedJson;
+            console.log('GLM JSON fix successful');
+          }
+        } catch (e) {
+          console.log('GLM JSON fix did not help, using original');
+        }
+      }
+
       if (jsonMatch) {
         console.log('JSON pattern found, attempting to parse...');
         const jsonStr = jsonMatch[0];

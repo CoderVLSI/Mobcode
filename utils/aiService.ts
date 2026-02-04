@@ -49,7 +49,8 @@ class AIService {
     apiKey: string | undefined,
     onToken: (token: string) => void,
     hfApiKey?: string,
-    geminiApiKey?: string
+    geminiApiKey?: string,
+    openRouterApiKey?: string
   ): Promise<AIResponse> {
     // Log incoming request
     console.log('=== AI SERVICE STREAM REQUEST ===');
@@ -84,6 +85,10 @@ class AIService {
     } else if (model.startsWith('glm')) {
       console.log('Routing to GLM stream');
       result = await this.streamGLM(messages, model, apiKey, onToken);
+    } else if (model.startsWith('openrouter/')) {
+      console.log('Routing to OpenRouter stream');
+      const key = openRouterApiKey || apiKey;
+      result = await this.streamOpenRouter(messages, model, key, onToken);
     } else if (model === LOCAL_MODEL_ID) {
       console.log('Routing to Local model');
       result = await this.streamLocal(messages, onToken);
@@ -585,7 +590,7 @@ class AIService {
         messages: messages,
         stream: true,
         temperature: 0.7,
-        max_tokens: 16000, // Increased to prevent cutoff
+        max_tokens: 4096, // Reduced for better GLM reliability
       };
 
       console.log('GLM Request body:', JSON.stringify(requestBody, null, 2));
@@ -695,7 +700,7 @@ class AIService {
         body: JSON.stringify({
           model: glmModel,
           messages: messages,
-          max_tokens: 16000, // Increased to prevent cutoff
+          max_tokens: 4096, // Reduced for better GLM reliability
           temperature: 0.7,
         }),
       });
@@ -838,6 +843,107 @@ class AIService {
         error: (error as Error).message,
       };
     }
+  }
+
+  private async streamHuggingFace(
+    messages: AIMessage[],
+    model: string,
+    apiKey: string | undefined,
+    onToken: (token: string) => void
+  ): Promise<AIResponse> {
+    return {
+      content: "Hugging Face streaming is currently not implemented.",
+      error: "Not implemented"
+    };
+  }
+
+  async fetchOpenRouterModels(apiKey: string): Promise<any[]> {
+    try {
+      const response = await fetch('https://openrouter.ai/api/v1/models', {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) throw new Error('Failed to fetch models');
+      const data = await response.json();
+      return data.data || [];
+    } catch (error) {
+      console.error('OpenRouter fetch error:', error);
+      return [];
+    }
+  }
+
+  private streamOpenRouter(
+    messages: AIMessage[],
+    model: string,
+    apiKey: string | undefined,
+    onToken: (token: string) => void
+  ): Promise<AIResponse> {
+    return new Promise((resolve) => {
+      if (!apiKey) {
+        resolve({
+          content: 'Please add your OpenRouter API key.',
+          error: 'No API key provided',
+        });
+        return;
+      }
+
+      const modelId = model.replace('openrouter/', '');
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', 'https://openrouter.ai/api/v1/chat/completions');
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Authorization', `Bearer ${apiKey}`);
+      xhr.setRequestHeader('HTTP-Referer', 'https://mobcode.app');
+      xhr.setRequestHeader('X-Title', 'Mobcode');
+
+      let lastIndex = 0;
+      let fullContent = '';
+
+      xhr.onprogress = () => {
+        const currIndex = xhr.responseText.length;
+        if (lastIndex === currIndex) return;
+
+        const chunk = xhr.responseText.substring(lastIndex, currIndex);
+        lastIndex = currIndex;
+
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
+            try {
+              const data = JSON.parse(trimmed.slice(6));
+              const token = data.choices?.[0]?.delta?.content || '';
+              if (token) {
+                fullContent += token;
+                onToken(token);
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ content: fullContent });
+        } else {
+          resolve({ content: xhr.responseText, error: 'API Error' });
+        }
+      };
+
+      xhr.onerror = () => {
+        resolve({ content: 'Network error', error: 'Network error' });
+      };
+
+      xhr.send(JSON.stringify({
+        model: modelId,
+        messages: messages,
+        stream: true,
+      }));
+    });
   }
 }
 
