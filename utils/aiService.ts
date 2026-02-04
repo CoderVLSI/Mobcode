@@ -472,7 +472,7 @@ class AIService {
       const requestBody: any = {
         contents: contents,
         generationConfig: {
-          maxOutputTokens: 2000,
+          maxOutputTokens: 8192,  // Increased from 2000 to match Gemini's limit
           temperature: 0.7,
         }
       };
