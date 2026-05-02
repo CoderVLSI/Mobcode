@@ -3,14 +3,28 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// Directly resolve expo-router's internal assets that Metro can't find
-// when required from inside node_modules via bare package specifiers.
+// All expo-router internal assets that Metro can't resolve from inside node_modules
+const EXPO_ROUTER_ASSETS = [
+  'arrow_down.png',
+  'error.png',
+  'file.png',
+  'forward.png',
+  'logotype.png',
+  'pkg.png',
+  'sitemap.png',
+  'unmatched.png',
+];
+
+const assetMap = Object.fromEntries(
+  EXPO_ROUTER_ASSETS.map(name => [
+    `expo-router/assets/${name}`,
+    path.resolve(__dirname, `node_modules/expo-router/assets/${name}`),
+  ])
+);
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName === 'expo-router/assets/logotype.png') {
-    return {
-      filePath: path.resolve(__dirname, 'node_modules/expo-router/assets/logotype.png'),
-      type: 'sourceFile',
-    };
+  if (assetMap[moduleName]) {
+    return { filePath: assetMap[moduleName], type: 'sourceFile' };
   }
   return context.resolveRequest(context, moduleName, platform);
 };
