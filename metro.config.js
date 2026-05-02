@@ -3,7 +3,12 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// All expo-router internal assets that Metro can't resolve from inside node_modules
+// Explicitly watch expo-router's assets dir so Metro can compute SHA-1 for them
+config.watchFolders = [
+  path.resolve(__dirname, 'node_modules/expo-router/assets'),
+];
+
+// Resolve all expo-router internal assets that Metro can't find from inside node_modules
 const EXPO_ROUTER_ASSETS = [
   'arrow_down.png',
   'error.png',
