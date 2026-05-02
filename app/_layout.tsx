@@ -2,6 +2,8 @@ import React from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
+import { PetProvider } from '../context/PetContext';
+import { PetOverlay } from '../components/PetOverlay';
 import * as AppRegistry from 'expo-modules-core';
 import { AppState, AppStateStatus } from 'react-native';
 
@@ -31,6 +33,7 @@ function LayoutContent() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
       </Stack>
+      <PetOverlay />
     </>
   );
 }
@@ -38,7 +41,9 @@ function LayoutContent() {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <LayoutContent />
+      <PetProvider>
+        <LayoutContent />
+      </PetProvider>
     </ThemeProvider>
   );
 }

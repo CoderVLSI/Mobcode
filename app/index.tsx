@@ -52,9 +52,12 @@ import {
 } from '../utils/localLlama';
 import { previewBus, PreviewRequest } from '../utils/previewBus';
 import { backgroundTaskManager, BackgroundTask } from '../utils/backgroundTask';
+import { usePet } from '../context/PetContext';
+import { BUILT_IN_PETS } from '../data/pets';
 
 export default function ChatScreen() {
   const { theme, isDarkMode, toggleTheme } = useTheme();
+  const { showPet, hidePet, toggleVisibility: togglePet, setActivePet, setAgentStatus } = usePet();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -509,6 +512,31 @@ export default function ChatScreen() {
     const userInput = inputText.trim();
     if (userInput === '' || !currentChat || isTyping) return;
 
+    // /pet slash command handling
+    if (userInput.startsWith('/pet')) {
+      const args = userInput.slice(4).trim().toLowerCase();
+      setInputText('');
+      if (args === '' || args === 'show') {
+        showPet();
+      } else if (args === 'hide') {
+        hidePet();
+      } else if (args === 'toggle') {
+        togglePet();
+      } else {
+        // Try to match a pet by id or name
+        const match = BUILT_IN_PETS.find(
+          p => p.id === args || p.name.toLowerCase() === args
+        );
+        if (match) {
+          setActivePet(match.id);
+          showPet();
+        } else {
+          showPet();
+        }
+      }
+      return;
+    }
+
     console.log('=== USER SEND MESSAGE ===');
     console.log('User Input:', userInput);
     console.log('Selected Model:', selectedModel);
@@ -639,6 +667,7 @@ export default function ChatScreen() {
           content: m.content,
         }));
 
+      setAgentStatus('running');
       result = await autonomousAgent.executeTask(
         agentInput,
         [
@@ -706,6 +735,8 @@ export default function ChatScreen() {
 
       // Complete the background task - it will handle cleanup after 5 seconds
       backgroundTaskManager.completeTask({ success: result.success, result });
+      setAgentStatus(result.success ? 'completed' : 'failed');
+      setTimeout(() => setAgentStatus('idle'), 4000);
 
       // Store the goal for task tracker
       if (result.plan?.goal) {
@@ -761,6 +792,8 @@ export default function ChatScreen() {
 
       // Fail the background task
       backgroundTaskManager.failTask((error as Error).message || 'Unknown error');
+      setAgentStatus('failed');
+      setTimeout(() => setAgentStatus('idle'), 4000);
 
       // Show error message to user
       const errorMsg: Message = {
