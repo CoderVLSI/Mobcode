@@ -41,11 +41,11 @@ async function generateImage(prompt: string, apiKey: string): Promise<string> {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'dall-e-3',
+      model: 'gpt-image-2',
       prompt,
       n: 1,
       size: '1024x1024',
-      response_format: 'b64_json',
+      output_format: 'png',
     }),
   });
 
@@ -55,6 +55,7 @@ async function generateImage(prompt: string, apiKey: string): Promise<string> {
   }
 
   const data = await response.json();
+  // gpt-image-2 returns b64_json in data[0].b64_json
   return data.data[0].b64_json as string;
 }
 

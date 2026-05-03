@@ -170,7 +170,7 @@ export function PetOverlay() {
               <Text style={{ fontSize: 36 }}>🥚</Text>
               <Text style={[styles.petCardName, { color: theme.accent }]}>Hatch New</Text>
               <Text style={[styles.petCardDesc, { color: theme.textSecondary }]}>
-                Generate a custom pet with DALL-E 3
+                Generate a custom pet with gpt-image-2
               </Text>
             </TouchableOpacity>
 

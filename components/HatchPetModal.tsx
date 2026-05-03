@@ -155,7 +155,7 @@ export function HatchPetModal({ visible, apiKey, onClose, onHatched }: HatchPetM
               />
 
               <Text style={[styles.hint, { color: theme.textSecondary }]}>
-                Generates 5 animation poses using DALL-E 3 — uses ~5 image credits from your OpenAI key.
+                Generates 5 animation poses using gpt-image-2 — uses ~5 image credits from your OpenAI key.
               </Text>
 
               <TouchableOpacity
@@ -184,7 +184,7 @@ export function HatchPetModal({ visible, apiKey, onClose, onHatched }: HatchPetM
               </Text>
 
               <Text style={[styles.hint, { color: theme.textSecondary, textAlign: 'center', marginTop: 12 }]}>
-                Each pose is a separate DALL-E 3 generation. This takes ~30–60s.
+                Each pose is a separate gpt-image-2 generation. This takes ~30–60s.
               </Text>
             </View>
           )}
