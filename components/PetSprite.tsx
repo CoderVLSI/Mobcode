@@ -1,5 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Animated, StyleSheet, Image } from 'react-native';
+import { WebView } from 'react-native-webview';
+import * as FileSystem from 'expo-file-system';
 import { Pet, PetAnimation } from '../data/pets';
 import { STRIP_CELL_SIZE, STRIP_POSES } from '../utils/petHatchService';
 
@@ -146,6 +148,19 @@ export function PetSprite({ pet, animation, size = 64 }: PetSpriteProps) {
 
   const rotateStr = rotate.interpolate({ inputRange: [-1, 1], outputRange: ['-57.3deg', '57.3deg'] });
   const s = size;
+
+  // SVG pet — free Gemini text generation
+  if (pet.isSvg && pet.animationImages) {
+    const svgPath = pet.animationImages[animation] ?? pet.animationImages['idle'];
+    return (
+      <Animated.View style={[
+        { width: s, height: s },
+        { transform: [{ translateY: bounceY }, { scaleX }, { scaleY }, { rotate: rotateStr }] },
+      ]}>
+        <SvgPet path={svgPath} size={s} />
+      </Animated.View>
+    );
+  }
 
   // Custom pet from one-shot sprite strip
   if (pet.stripPath) {
@@ -344,6 +359,19 @@ function SpritesheetPet({ pet, animation, size, bounceY, scaleX, scaleY, rotate 
   );
 }
 
+function SvgPet({ path, size }: { path: string; size: number }) {
+  const [svg, setSvg] = useState<string | null>(null);
+  useEffect(() => {
+    FileSystem.readAsStringAsync(path, { encoding: FileSystem.EncodingType.UTF8 })
+      .then(setSvg).catch(() => setSvg(null));
+  }, [path]);
+  if (!svg) return <View style={{ width: size, height: size }} />;
+  const html = `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:0}html,body{width:${size}px;height:${size}px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:transparent}</style></head><body>${svg}</body></html>`;
+  return (
+    <WebView source={{ html }} style={{ width: size, height: size, backgroundColor: 'transparent' }}
+      scrollEnabled={false} pointerEvents="none" androidLayerType="hardware" />
+  );
+}
 
 const styles = StyleSheet.create({
   root: { position: 'relative' },

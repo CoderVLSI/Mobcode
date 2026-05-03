@@ -22,9 +22,10 @@ export interface Pet {
   description: string;
   colors: PetColors;
   spritesheetPath?: string;       // path to custom 1536x1872 WebP atlas
-  animationImages?: Record<string, string>; // legacy per-animation file paths
-  stripPath?: string;  // path to 5-panel horizontal sprite strip (one-shot gen)
+  animationImages?: Record<string, string>; // per-animation SVG file paths (free tier)
+  stripPath?: string;  // path to 5-panel horizontal sprite strip (paid image gen)
   isCustom?: boolean;
+  isSvg?: boolean;
 }
 
 // 8 built-in pets — pixel-art-style chibi mascots
