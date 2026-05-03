@@ -37,7 +37,7 @@ export function HatchPetModal({ visible, openAIKey, geminiKey, onClose, onHatche
   const { theme } = useTheme();
   const [concept, setConcept] = useState('');
   const [petName, setPetName] = useState('');
-  const [provider, setProvider] = useState<ImageProvider>(geminiKey ? 'gemini' : 'openai');
+  const [provider, setProvider] = useState<ImageProvider>('gemini');
   const [isHatching, setIsHatching] = useState(false);
   const [progress, setProgress] = useState<HatchProgress | null>(null);
   const [hatchedPet, setHatchedPet] = useState<Pet | null>(null);
@@ -70,8 +70,14 @@ export function HatchPetModal({ visible, openAIKey, geminiKey, onClose, onHatche
       return;
     }
     if (!activeKey) {
-      const keyName = provider === 'gemini' ? 'Gemini' : 'OpenAI';
-      Alert.alert(`${keyName} key needed`, `Add your ${keyName} API key in Settings to hatch custom pets.`);
+      if (provider === 'gemini') {
+        Alert.alert(
+          'Gemini key needed',
+          'Add your Gemini API key in Settings. It\'s free at aistudio.google.com — no billing required.'
+        );
+      } else {
+        Alert.alert('OpenAI key needed', 'Add your OpenAI API key in Settings. Note: gpt-image-2 costs image credits.');
+      }
       return;
     }
 
@@ -132,8 +138,8 @@ export function HatchPetModal({ visible, openAIKey, geminiKey, onClose, onHatche
               <Text style={[styles.label, { color: theme.textSecondary }]}>Image model</Text>
               <View style={styles.providerRow}>
                 {([
-                  { id: 'gemini', label: 'Gemini 3.1 Flash Image', sub: 'consistent character', hasKey: !!geminiKey },
-                  { id: 'openai', label: 'gpt-image-2',            sub: 'OpenAI latest',        hasKey: !!openAIKey },
+                  { id: 'gemini', label: 'Gemini 3.1 Flash Image', sub: 'free tier · consistent', hasKey: !!geminiKey },
+                  { id: 'openai', label: 'gpt-image-2',            sub: 'paid · OpenAI credits',  hasKey: !!openAIKey },
                 ] as const).map(p => (
                   <TouchableOpacity
                     key={p.id}
