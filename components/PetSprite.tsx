@@ -146,6 +146,23 @@ export function PetSprite({ pet, animation, size = 64 }: PetSpriteProps) {
   const rotateStr = rotate.interpolate({ inputRange: [-1, 1], outputRange: ['-57.3deg', '57.3deg'] });
   const s = size;
 
+  // If the pet has AI-generated animation images, render those
+  if (pet.animationImages) {
+    const imgUri = pet.animationImages[animation] ?? pet.animationImages['idle'];
+    return (
+      <Animated.View style={[
+        { width: s, height: s },
+        { transform: [{ translateY: bounceY }, { scaleX }, { scaleY }, { rotate: rotateStr }] },
+      ]}>
+        <Image
+          source={{ uri: `file://${imgUri}` }}
+          style={{ width: s, height: s, borderRadius: s * 0.1 }}
+          resizeMode="contain"
+        />
+      </Animated.View>
+    );
+  }
+
   // If the pet has a custom spritesheet, render from atlas
   if (pet.spritesheetPath) {
     return (

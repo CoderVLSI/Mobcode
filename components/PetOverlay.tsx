@@ -14,8 +14,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePet, AgentStatus } from '../context/PetContext';
 import { PetSprite } from './PetSprite';
+import { HatchPetModal } from './HatchPetModal';
 import { useTheme } from '../context/ThemeContext';
 import { BUILT_IN_PETS } from '../data/pets';
+import { storage } from '../utils/storage';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PET_SIZE = 64;
@@ -40,12 +42,18 @@ const STATUS_COLORS: Record<AgentStatus, string> = {
 };
 
 export function PetOverlay() {
-  const { activePet, isVisible, animation, agentStatus, allPets, setActivePet, hidePet } = usePet();
+  const { activePet, isVisible, animation, agentStatus, allPets, setActivePet, hidePet, addCustomPet, removeCustomPet } = usePet();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [showPicker, setShowPicker] = useState(false);
   const [showBubble, setShowBubble] = useState(false);
+  const [showHatch, setShowHatch] = useState(false);
+  const [openAIKey, setOpenAIKey] = useState('');
+
+  useEffect(() => {
+    storage.getOpenAIKey().then(setOpenAIKey).catch(() => {});
+  }, [showHatch]);
 
   // Drag position — start bottom-right
   const pan = useRef(new Animated.ValueXY({
@@ -135,6 +143,14 @@ export function PetOverlay() {
         </TouchableOpacity>
       </Animated.View>
 
+      {/* Hatch modal */}
+      <HatchPetModal
+        visible={showHatch}
+        apiKey={openAIKey}
+        onClose={() => setShowHatch(false)}
+        onHatched={(pet) => { addCustomPet(pet); setShowHatch(false); }}
+      />
+
       {/* Pet picker modal */}
       <Modal visible={showPicker} transparent animationType="slide" onRequestClose={() => setShowPicker(false)}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowPicker(false)} />
@@ -146,6 +162,18 @@ export function PetOverlay() {
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.petGrid}>
+            {/* Hatch new pet card */}
+            <TouchableOpacity
+              style={[styles.petCard, styles.hatchCard, { backgroundColor: theme.background, borderColor: theme.accent }]}
+              onPress={() => { setShowPicker(false); setShowHatch(true); }}
+            >
+              <Text style={{ fontSize: 36 }}>🥚</Text>
+              <Text style={[styles.petCardName, { color: theme.accent }]}>Hatch New</Text>
+              <Text style={[styles.petCardDesc, { color: theme.textSecondary }]}>
+                Generate a custom pet with DALL-E 3
+              </Text>
+            </TouchableOpacity>
+
             {allPets.map(pet => (
               <TouchableOpacity
                 key={pet.id}
@@ -154,12 +182,18 @@ export function PetOverlay() {
                   { backgroundColor: theme.background, borderColor: pet.id === activePet.id ? pet.colors.body : theme.border },
                 ]}
                 onPress={() => { setActivePet(pet.id); setShowPicker(false); }}
+                onLongPress={() => {
+                  if (pet.isCustom) removeCustomPet(pet.id);
+                }}
               >
                 <PetSprite pet={pet} animation="idle" size={52} />
                 <Text style={[styles.petCardName, { color: theme.text }]}>{pet.name}</Text>
                 <Text style={[styles.petCardDesc, { color: theme.textSecondary }]} numberOfLines={2}>
                   {pet.description}
                 </Text>
+                {pet.isCustom && (
+                  <Text style={[styles.customBadge, { color: theme.accent }]}>custom</Text>
+                )}
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -278,5 +312,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textAlign: 'center',
     lineHeight: 15,
+  },
+  hatchCard: {
+    borderStyle: 'dashed',
+    borderWidth: 2,
+  },
+  customBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 2,
   },
 });

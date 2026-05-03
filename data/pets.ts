@@ -21,7 +21,9 @@ export interface Pet {
   emoji: string;
   description: string;
   colors: PetColors;
-  spritesheetPath?: string; // path to custom 1536x1872 WebP atlas
+  spritesheetPath?: string;       // path to custom 1536x1872 WebP atlas
+  animationImages?: Record<string, string>; // per-animation image URIs from hatch pipeline
+  isCustom?: boolean;
 }
 
 // 8 built-in pets — pixel-art-style chibi mascots
