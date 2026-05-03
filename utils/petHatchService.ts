@@ -4,7 +4,11 @@ import { Pet, PetAnimation } from '../data/pets';
 const PETS_DIR = `${FileSystem.documentDirectory}pets/`;
 const CUSTOM_PETS_INDEX = `${PETS_DIR}index.json`;
 
-export type ImageProvider = 'gemini-text' | 'openai';
+export type ImageProvider = 'gemini' | 'openai';
+
+// Strip layout: 5 poses side by side, each cell 256x256 → total 1280x256
+export const STRIP_CELL_SIZE = 256;
+export const STRIP_POSES = ['idle', 'running', 'waving', 'jumping', 'failed'] as const;
 
 export interface HatchProgress {
   step: string;
@@ -16,115 +20,72 @@ function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-// ─── Gemini text → SVG (FREE, single API call for all poses) ──────────────
+// ─── Gemini image model — ONE call, full sprite strip ─────────────────────
 
-const SVG_SYSTEM_PROMPT = `You are a pixel-art SVG generator for mobile app mascot pets.
-Generate cute chibi-style SVG characters at 200x200px.
-Rules:
-- Use viewBox="0 0 200 200", width="200", height="200"
-- Thick 2px dark outlines on all shapes
-- Limited flat color palette (4-6 colors max)
-- Simple expressive face: dot eyes, curved mouth
-- No text, no gradients, no shadows
-- Pure white background rect first
-- Full body visible and centered
-- Return ONLY valid SVG markup, no explanation`;
-
-const POSE_DESCRIPTIONS = {
-  idle:    'standing upright, relaxed, arms at sides, facing viewer, neutral happy expression',
-  running: 'side view, leaning forward, one leg raised behind, arms pumping, determined face',
-  waving:  'facing viewer, one arm raised high waving, other arm at side, big smile',
-  jumping: 'in the air, both arms raised up, legs bent, joyful excited expression',
-  failed:  'hunched over, shoulders drooped, arms hanging low, sad face with downturned mouth',
-};
-
-async function generateAllPosesGemini(
-  concept: string,
-  apiKey: string,
-  onProgress: (p: HatchProgress) => void
-): Promise<Record<string, string>> {
-  onProgress({ step: 'Asking Gemini to design your pet…', current: 1, total: 2 });
-
+async function generateStripGemini(concept: string, apiKey: string): Promise<string> {
   const prompt =
-    `Create a cute chibi mascot pet based on this concept: "${concept}".
-Design the character with a consistent look across all poses.
-Return a JSON object with exactly these keys: idle, running, waving, jumping, failed.
-Each value must be a complete standalone SVG string (200x200px) showing the character in that pose.
+    `Generate a sprite sheet strip for a cute chibi mascot character: "${concept}".
+The image must be exactly 5 panels arranged LEFT TO RIGHT in a single horizontal strip.
+Each panel is 256x256 pixels. Total image size: 1280x256.
+Panels in order (left to right):
+1. IDLE — standing upright, relaxed, facing viewer, neutral happy expression
+2. RUNNING — side view, leaning forward, one leg raised, arms pumping
+3. WAVING — facing viewer, one arm raised high, big smile
+4. JUMPING — in the air, both arms raised up, joyful expression
+5. FAILED — hunched, shoulders drooped, sad downturned mouth
 
-Pose descriptions:
-- idle: ${POSE_DESCRIPTIONS.idle}
-- running: ${POSE_DESCRIPTIONS.running}
-- waving: ${POSE_DESCRIPTIONS.waving}
-- jumping: ${POSE_DESCRIPTIONS.jumping}
-- failed: ${POSE_DESCRIPTIONS.failed}
+Style rules:
+- Consistent character design across ALL panels (same colors, proportions, features)
+- Pixel-art-adjacent: thick dark 2px outlines, chunky silhouette, flat colors
+- White background in each panel
+- Full body visible and centered in each panel
+- Clear thin dividing line between panels`;
 
-${SVG_SYSTEM_PROMPT}
-
-Respond with ONLY a raw JSON object. No markdown, no code fences, no explanation. Example format:
-{"idle":"<svg ...>...</svg>","running":"<svg ...>...</svg>","waving":"<svg ...>...</svg>","jumping":"<svg ...>...</svg>","failed":"<svg ...>...</svg>"}`;
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKey}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 16384 },
+      generationConfig: {
+        responseModalities: ['IMAGE'],
+        imageConfig: { aspectRatio: '5:1' },
+      },
     }),
   });
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Gemini text gen failed (${response.status})`);
+    throw new Error(err?.error?.message || `Gemini image gen failed (${response.status})`);
   }
 
   const data = await response.json();
-  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-
-  // Strip markdown code fences if present
-  const cleaned = raw.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
-
-  onProgress({ step: 'Parsing SVG poses…', current: 2, total: 2 });
-
-  let svgs: Record<string, string>;
-  try {
-    svgs = JSON.parse(cleaned);
-  } catch {
-    // Try extracting JSON from within the text
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('Gemini returned invalid JSON — try again');
-    svgs = JSON.parse(match[0]);
-  }
-
-  const required = ['idle', 'running', 'waving', 'jumping', 'failed'];
-  for (const key of required) {
-    if (!svgs[key]) throw new Error(`Gemini missing pose: ${key}`);
-  }
-
-  return svgs;
+  const part = data.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+  if (!part) throw new Error('Gemini returned no image data');
+  return part.inlineData.data as string; // base64 PNG
 }
 
-// ─── OpenAI gpt-image-2 (paid, 5 separate image gen calls) ────────────────
+// ─── OpenAI gpt-image-2 — ONE call, full sprite strip ────────────────────
 
-const POSE_PROMPTS: Record<string, string> = {
-  idle:    'standing neutral relaxed pose, centered, facing viewer',
-  running: 'running pose, side view, one leg raised, leaning forward energetically',
-  waving:  'waving one arm up high, big smile, friendly greeting, facing viewer',
-  jumping: 'jumping in the air, both arms raised, joyful excited expression',
-  failed:  'sad drooping pose, shoulders slumped, looking downward, dejected',
-};
-
-async function generateOpenAIImage(concept: string, poseKey: string, apiKey: string): Promise<string> {
+async function generateStripOpenAI(concept: string, apiKey: string): Promise<string> {
   const prompt =
-    `A single cute chibi mascot character: ${concept}. ` +
-    `Pose: ${POSE_PROMPTS[poseKey]}. ` +
-    `Style: pixel-art-adjacent, thick dark outlines, limited flat palette, white background, full body centered.`;
+    `Sprite sheet strip for a cute chibi mascot: "${concept}".
+5 panels left to right (each 256x256, total 1280x256):
+1-IDLE: standing relaxed facing viewer | 2-RUNNING: side view leaning forward one leg raised | 3-WAVING: arm raised high big smile | 4-JUMPING: both arms up joyful | 5-FAILED: hunched sad drooping
+Style: pixel-art chibi, thick dark outlines, flat colors, white background per panel, consistent character across all panels.`;
 
   const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: 'gpt-image-2', prompt, n: 1, size: '1024x1024', output_format: 'png' }),
+    body: JSON.stringify({
+      model: 'gpt-image-2',
+      prompt,
+      n: 1,
+      size: '1536x1024',
+      output_format: 'png',
+    }),
   });
+
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error(err?.error?.message || `gpt-image-2 failed (${response.status})`);
@@ -133,7 +94,7 @@ async function generateOpenAIImage(concept: string, poseKey: string, apiKey: str
   return data.data[0].b64_json as string;
 }
 
-// ─── Shared storage helpers ────────────────────────────────────────────────
+// ─── Shared helpers ────────────────────────────────────────────────────────
 
 async function ensurePetsDir(): Promise<void> {
   const info = await FileSystem.getInfoAsync(PETS_DIR);
@@ -141,8 +102,6 @@ async function ensurePetsDir(): Promise<void> {
 }
 
 // ─── Main hatch function ───────────────────────────────────────────────────
-
-const POSE_KEYS = ['idle', 'running', 'waving', 'jumping', 'failed'] as const;
 
 export async function hatchPet(
   concept: string,
@@ -158,36 +117,16 @@ export async function hatchPet(
   const dirInfo = await FileSystem.getInfoAsync(petDir);
   if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(petDir, { intermediates: true });
 
-  const animationImages: Record<string, string> = {};
+  onProgress({ step: 'Generating all poses in one shot…', current: 1, total: 2 });
 
-  if (provider === 'gemini-text') {
-    // Single Gemini text call → all SVGs at once
-    const svgs = await generateAllPosesGemini(concept, apiKey, onProgress);
+  const base64 = provider === 'gemini'
+    ? await generateStripGemini(concept, apiKey)
+    : await generateStripOpenAI(concept, apiKey);
 
-    for (const key of POSE_KEYS) {
-      const filePath = `${petDir}${key}.svg`;
-      await FileSystem.writeAsStringAsync(filePath, svgs[key], { encoding: FileSystem.EncodingType.UTF8 });
-      animationImages[key] = filePath;
-    }
-  } else {
-    // gpt-image-2: 5 separate image gen calls
-    const total = POSE_KEYS.length;
-    for (let i = 0; i < POSE_KEYS.length; i++) {
-      const key = POSE_KEYS[i];
-      onProgress({ step: `Generating ${key} pose…`, current: i + 1, total });
-      const base64 = await generateOpenAIImage(concept, key, apiKey);
-      const filePath = `${petDir}${key}.png`;
-      await FileSystem.writeAsStringAsync(filePath, base64, { encoding: FileSystem.EncodingType.Base64 });
-      animationImages[key] = filePath;
-    }
-  }
+  onProgress({ step: 'Saving sprite strip…', current: 2, total: 2 });
 
-  // Derive missing states
-  animationImages['completed'] = animationImages['jumping'];
-  animationImages['review']    = animationImages['idle'];
-  animationImages['waiting']   = animationImages['idle'];
-
-  onProgress({ step: 'Packaging pet…', current: 2, total: 2 });
+  const stripPath = `${petDir}strip.png`;
+  await FileSystem.writeAsStringAsync(stripPath, base64, { encoding: FileSystem.EncodingType.Base64 });
 
   const pet: Pet = {
     id,
@@ -195,12 +134,15 @@ export async function hatchPet(
     emoji: '🐾',
     description: concept,
     colors: { body: '#888', accent: '#555', eye: '#fff', shine: '#ccc' },
-    animationImages,
+    stripPath,
     isCustom: true,
-    isSvg: provider === 'gemini-text',
   };
 
-  await FileSystem.writeAsStringAsync(`${petDir}pet.json`, JSON.stringify(pet, null, 2), { encoding: FileSystem.EncodingType.UTF8 });
+  await FileSystem.writeAsStringAsync(
+    `${petDir}pet.json`,
+    JSON.stringify(pet, null, 2),
+    { encoding: FileSystem.EncodingType.UTF8 }
+  );
 
   const existing = await loadCustomPetIndex();
   await FileSystem.writeAsStringAsync(

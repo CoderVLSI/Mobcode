@@ -22,9 +22,9 @@ export interface Pet {
   description: string;
   colors: PetColors;
   spritesheetPath?: string;       // path to custom 1536x1872 WebP atlas
-  animationImages?: Record<string, string>; // per-animation file paths (PNG or SVG)
+  animationImages?: Record<string, string>; // legacy per-animation file paths
+  stripPath?: string;  // path to 5-panel horizontal sprite strip (one-shot gen)
   isCustom?: boolean;
-  isSvg?: boolean; // animationImages contain SVG files (Gemini text gen)
 }
 
 // 8 built-in pets — pixel-art-style chibi mascots

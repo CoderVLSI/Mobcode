@@ -37,7 +37,7 @@ export function HatchPetModal({ visible, openAIKey, geminiKey, onClose, onHatche
   const { theme } = useTheme();
   const [concept, setConcept] = useState('');
   const [petName, setPetName] = useState('');
-  const [provider, setProvider] = useState<ImageProvider>('gemini-text');
+  const [provider, setProvider] = useState<ImageProvider>('gemini');
   const [isHatching, setIsHatching] = useState(false);
   const [progress, setProgress] = useState<HatchProgress | null>(null);
   const [hatchedPet, setHatchedPet] = useState<Pet | null>(null);
@@ -58,7 +58,7 @@ export function HatchPetModal({ visible, openAIKey, geminiKey, onClose, onHatche
     onClose();
   };
 
-  const activeKey = provider === 'gemini-text' ? geminiKey : openAIKey;
+  const activeKey = provider === 'gemini' ? geminiKey : openAIKey;
 
   const handleHatch = async () => {
     if (!concept.trim()) {
@@ -70,7 +70,7 @@ export function HatchPetModal({ visible, openAIKey, geminiKey, onClose, onHatche
       return;
     }
     if (!activeKey) {
-      if (provider === 'gemini-text') {
+      if (provider === 'gemini') {
         Alert.alert(
           'Gemini key needed',
           'Add your Gemini API key in Settings. It\'s free at aistudio.google.com — no billing required.'
@@ -138,7 +138,7 @@ export function HatchPetModal({ visible, openAIKey, geminiKey, onClose, onHatche
               <Text style={[styles.label, { color: theme.textSecondary }]}>Image model</Text>
               <View style={styles.providerRow}>
                 {([
-                  { id: 'gemini-text', label: 'Gemini 2.5 Flash', sub: 'free · SVG · 1 call',     hasKey: !!geminiKey },
+                  { id: 'gemini',      label: 'Gemini 3.1 Flash Image', sub: 'free · 1 call · all poses', hasKey: !!geminiKey },
                   { id: 'openai',      label: 'gpt-image-2',       sub: 'paid · PNG · 5 calls',    hasKey: !!openAIKey },
                 ] as const).map(p => (
                   <TouchableOpacity
@@ -189,9 +189,9 @@ export function HatchPetModal({ visible, openAIKey, geminiKey, onClose, onHatche
               />
 
               <Text style={[styles.hint, { color: theme.textSecondary }]}>
-                {provider === 'gemini-text'
-                  ? 'Gemini 2.5 Flash generates all 5 poses as SVG in a single free API call — no image credits used.'
-                  : 'gpt-image-2 makes 5 separate image generation calls. Uses paid OpenAI image credits.'
+                {provider === 'gemini'
+                  ? 'Gemini generates all 5 poses in one image (sprite strip) — single API call, no per-pose cost.'
+                  : 'gpt-image-2 generates a sprite strip in one call too. Uses OpenAI image credits.'
                 }
               </Text>
 
@@ -221,10 +221,7 @@ export function HatchPetModal({ visible, openAIKey, geminiKey, onClose, onHatche
               </Text>
 
               <Text style={[styles.hint, { color: theme.textSecondary, textAlign: 'center', marginTop: 12 }]}>
-                {provider === 'gemini-text'
-                ? 'Generating all poses as SVG in one call — usually ~10–20s.'
-                : 'Generating 5 PNG poses via gpt-image-2 — ~30–60s.'
-              }
+                {'Generating sprite strip — all 5 poses in one image…'}
               </Text>
             </View>
           )}
