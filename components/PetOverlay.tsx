@@ -50,9 +50,11 @@ export function PetOverlay() {
   const [showBubble, setShowBubble] = useState(false);
   const [showHatch, setShowHatch] = useState(false);
   const [openAIKey, setOpenAIKey] = useState('');
+  const [geminiKey, setGeminiKey] = useState('');
 
   useEffect(() => {
     storage.getOpenAIKey().then(setOpenAIKey).catch(() => {});
+    storage.getGeminiKey().then(setGeminiKey).catch(() => {});
   }, [showHatch]);
 
   // Drag position — start bottom-right
@@ -146,7 +148,8 @@ export function PetOverlay() {
       {/* Hatch modal */}
       <HatchPetModal
         visible={showHatch}
-        apiKey={openAIKey}
+        openAIKey={openAIKey}
+        geminiKey={geminiKey}
         onClose={() => setShowHatch(false)}
         onHatched={(pet) => { addCustomPet(pet); setShowHatch(false); }}
       />

@@ -12,12 +12,13 @@ import {
   Alert,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
-import { hatchPet, HatchProgress } from '../utils/petHatchService';
+import { hatchPet, HatchProgress, ImageProvider } from '../utils/petHatchService';
 import { Pet } from '../data/pets';
 
 interface HatchPetModalProps {
   visible: boolean;
-  apiKey: string;
+  openAIKey: string;
+  geminiKey: string;
   onClose: () => void;
   onHatched: (pet: Pet) => void;
 }
@@ -32,10 +33,11 @@ const EXAMPLE_CONCEPTS = [
   'a bouncy green frog with a crown',
 ];
 
-export function HatchPetModal({ visible, apiKey, onClose, onHatched }: HatchPetModalProps) {
+export function HatchPetModal({ visible, openAIKey, geminiKey, onClose, onHatched }: HatchPetModalProps) {
   const { theme } = useTheme();
   const [concept, setConcept] = useState('');
   const [petName, setPetName] = useState('');
+  const [provider, setProvider] = useState<ImageProvider>(geminiKey ? 'gemini' : 'openai');
   const [isHatching, setIsHatching] = useState(false);
   const [progress, setProgress] = useState<HatchProgress | null>(null);
   const [hatchedPet, setHatchedPet] = useState<Pet | null>(null);
@@ -56,6 +58,8 @@ export function HatchPetModal({ visible, apiKey, onClose, onHatched }: HatchPetM
     onClose();
   };
 
+  const activeKey = provider === 'gemini' ? geminiKey : openAIKey;
+
   const handleHatch = async () => {
     if (!concept.trim()) {
       Alert.alert('Describe your pet', 'Tell us what kind of pet to hatch.');
@@ -65,8 +69,9 @@ export function HatchPetModal({ visible, apiKey, onClose, onHatched }: HatchPetM
       Alert.alert('Name your pet', 'Give your pet a name first.');
       return;
     }
-    if (!apiKey) {
-      Alert.alert('OpenAI key needed', 'Add your OpenAI API key in Settings to hatch custom pets.');
+    if (!activeKey) {
+      const keyName = provider === 'gemini' ? 'Gemini' : 'OpenAI';
+      Alert.alert(`${keyName} key needed`, `Add your ${keyName} API key in Settings to hatch custom pets.`);
       return;
     }
 
@@ -78,7 +83,8 @@ export function HatchPetModal({ visible, apiKey, onClose, onHatched }: HatchPetM
       const pet = await hatchPet(
         concept.trim(),
         petName.trim(),
-        apiKey,
+        activeKey,
+        provider,
         (p) => {
           setProgress(p);
           // Show preview images as they arrive
@@ -122,6 +128,28 @@ export function HatchPetModal({ visible, apiKey, onClose, onHatched }: HatchPetM
         <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
           {!isHatching && !hatchedPet && (
             <>
+              {/* Provider picker */}
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Image model</Text>
+              <View style={styles.providerRow}>
+                {([
+                  { id: 'gemini', label: 'Gemini 3.1 Flash Image', sub: 'consistent character', hasKey: !!geminiKey },
+                  { id: 'openai', label: 'gpt-image-2',            sub: 'OpenAI latest',        hasKey: !!openAIKey },
+                ] as const).map(p => (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={[
+                      styles.providerCard,
+                      { borderColor: provider === p.id ? theme.accent : theme.border, backgroundColor: theme.background },
+                    ]}
+                    onPress={() => setProvider(p.id)}
+                  >
+                    <Text style={[styles.providerName, { color: provider === p.id ? theme.accent : theme.text }]}>{p.label}</Text>
+                    <Text style={[styles.providerSub, { color: theme.textSecondary }]}>{p.sub}</Text>
+                    {!p.hasKey && <Text style={[styles.providerNoKey, { color: theme.warning }]}>no key set</Text>}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <Text style={[styles.label, { color: theme.textSecondary }]}>Concept</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: theme.inputBackground, color: theme.text, borderColor: theme.border }]}
@@ -155,7 +183,10 @@ export function HatchPetModal({ visible, apiKey, onClose, onHatched }: HatchPetM
               />
 
               <Text style={[styles.hint, { color: theme.textSecondary }]}>
-                Generates 5 animation poses using gpt-image-2 — uses ~5 image credits from your OpenAI key.
+                {provider === 'gemini'
+                  ? 'Gemini uses multi-turn image editing — idle pose is generated first, then used as a reference for all other poses to keep your character consistent.'
+                  : 'gpt-image-2 generates each pose independently. ~5 image credits from your OpenAI key.'
+                }
               </Text>
 
               <TouchableOpacity
@@ -184,7 +215,10 @@ export function HatchPetModal({ visible, apiKey, onClose, onHatched }: HatchPetM
               </Text>
 
               <Text style={[styles.hint, { color: theme.textSecondary, textAlign: 'center', marginTop: 12 }]}>
-                Each pose is a separate gpt-image-2 generation. This takes ~30–60s.
+                {provider === 'gemini'
+                ? 'Gemini: idle pose first, then referencing it for consistency. ~30–60s.'
+                : 'gpt-image-2: each pose generated independently. ~30–60s.'
+              }
               </Text>
             </View>
           )}
@@ -302,4 +336,15 @@ const styles = StyleSheet.create({
   previewLabel: { fontSize: 11, marginTop: 4, textTransform: 'capitalize' },
   retryBtn: { alignItems: 'center', marginTop: 12 },
   retryText: { fontSize: 14 },
+  providerRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
+  providerCard: {
+    flex: 1,
+    borderWidth: 2,
+    borderRadius: 10,
+    padding: 10,
+    gap: 2,
+  },
+  providerName: { fontSize: 12, fontWeight: '700' },
+  providerSub: { fontSize: 11 },
+  providerNoKey: { fontSize: 10, fontWeight: '600', marginTop: 2 },
 });
