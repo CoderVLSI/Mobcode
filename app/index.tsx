@@ -41,6 +41,7 @@ import { MessageContent } from '../components/MessageContent';
 import { ToolsHelp } from '../components/ToolsHelp';
 import { SkillsManager } from '../components/SkillsManager';
 import { CodeArena } from '../components/CodeArena';
+import { SlashCommandMenu, SlashCommand } from '../components/SlashCommandMenu';
 import { AI_MODELS } from '../constants/Models';
 import {
   LOCAL_MODEL_ID,
@@ -125,6 +126,7 @@ export default function ChatScreen() {
   const [showCodeArena, setShowCodeArena] = useState(false);
   const [openRouterKey, setOpenRouterKey] = useState('');
   const [backgroundTask, setBackgroundTask] = useState<BackgroundTask | null>(null);
+  const [slashMenuVisible, setSlashMenuVisible] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const approvalResolverRef = useRef<((value: boolean) => void) | null>(null);
   const messageCounterRef = useRef(0);
@@ -511,6 +513,9 @@ export default function ChatScreen() {
   const sendMessage = async () => {
     const userInput = inputText.trim();
     if (userInput === '' || !currentChat || isTyping) return;
+
+    // dismiss slash menu on send
+    setSlashMenuVisible(false);
 
     // /pet slash command handling
     if (userInput.startsWith('/pet')) {
@@ -1136,6 +1141,45 @@ export default function ChatScreen() {
             </ScrollView>
           )}
 
+          {slashMenuVisible && (
+            <SlashCommandMenu
+              query={inputText.slice(1)}
+              onDismiss={() => setSlashMenuVisible(false)}
+              commands={[
+                // Pets
+                { command: '/pet', description: 'Show your pet overlay', icon: 'happy-outline', category: 'Pets',
+                  onSelect: () => { showPet(); setInputText(''); } },
+                { command: '/pet hide', description: 'Hide your pet', icon: 'eye-off-outline', category: 'Pets',
+                  onSelect: () => { hidePet(); setInputText(''); } },
+                { command: '/pet toggle', description: 'Toggle pet visibility', icon: 'toggle-outline', category: 'Pets',
+                  onSelect: () => { togglePet(); setInputText(''); } },
+                // Chat
+                { command: '/new', description: 'Start a new chat', icon: 'add-circle-outline', category: 'Chat',
+                  onSelect: () => { createNewChat(); setInputText(''); } },
+                { command: '/history', description: 'Browse chat history', icon: 'time-outline', category: 'Chat',
+                  onSelect: () => { setShowHistory(true); setInputText(''); } },
+                // Tools
+                { command: '/files', description: 'Open file explorer', icon: 'folder-outline', category: 'Tools',
+                  onSelect: () => { setShowFileExplorer(true); setInputText(''); } },
+                { command: '/git', description: 'Open git panel', icon: 'git-branch-outline', category: 'Tools',
+                  onSelect: () => { setShowGitPanel(true); setInputText(''); } },
+                { command: '/mcp', description: 'Manage MCP servers', icon: 'server-outline', category: 'Tools',
+                  onSelect: () => { setShowMCPManager(true); setInputText(''); } },
+                { command: '/skills', description: 'Browse agent skills', icon: 'flash-outline', category: 'Tools',
+                  onSelect: () => { setShowSkillsManager(true); setInputText(''); } },
+                { command: '/tools', description: 'Show available tools', icon: 'construct-outline', category: 'Tools',
+                  onSelect: () => { setShowToolsHelp(true); setInputText(''); } },
+                // Settings
+                { command: '/model', description: 'Switch AI model', icon: 'hardware-chip-outline', category: 'Settings',
+                  onSelect: () => { setShowModelPicker(true); setInputText(''); } },
+                { command: '/settings', description: 'Open settings', icon: 'settings-outline', category: 'Settings',
+                  onSelect: () => { setShowSettings(true); setInputText(''); } },
+                { command: '/theme', description: 'Toggle dark / light mode', icon: 'contrast-outline', category: 'Settings',
+                  onSelect: () => { toggleTheme(); setInputText(''); } },
+              ]}
+            />
+          )}
+
           <View style={styles.inputRow}>
             <TouchableOpacity onPress={() => setShowModelPicker(true)} style={styles.modelIconButton}>
               <Ionicons name="sparkles" size={16} color={theme.accent} />
@@ -1151,8 +1195,11 @@ export default function ChatScreen() {
             <TextInput
               style={styles.compactInput}
               value={inputText}
-              onChangeText={setInputText}
-              placeholder="Ask anything..."
+              onChangeText={(text) => {
+                setInputText(text);
+                setSlashMenuVisible(text.startsWith('/') && !text.includes(' '));
+              }}
+              placeholder="Ask anything... (/ for commands)"
               placeholderTextColor={theme.placeholder}
               multiline
               maxLength={4000}
